@@ -1,0 +1,53 @@
+name: APK তৈরি করুন
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: প্যাকেজ ইনস্টল
+        run: npm ci
+
+      - name: অ্যান্ড্রয়েড প্রজেক্ট তৈরি
+        run: npx cap add android
+
+      - name: নোটিফিকেশনের অনুমতি যোগ
+        run: node scripts/patch-android.js
+
+      - name: অ্যাপের আইকন তৈরি
+        run: npx capacitor-assets generate --android
+
+      - name: ওয়েব ফাইল অ্যান্ড্রয়েড প্রজেক্টে কপি
+        run: npx cap sync android
+
+      - name: APK বিল্ড
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: APK ফাইল সংরক্ষণ
+        uses: actions/upload-artifact@v4
+        with:
+          name: case-diary-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
