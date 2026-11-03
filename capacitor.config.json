@@ -1,0 +1,10 @@
+{
+  "appId": "com.fahad.casediary",
+  "appName": "কেস ডায়েরি",
+  "webDir": "www",
+  "plugins": {
+    "LocalNotifications": {
+      "iconColor": "#0F4C5C"
+    }
+  }
+}

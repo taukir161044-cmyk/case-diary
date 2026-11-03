@@ -1,0 +1,22 @@
+{
+  "name": "case-diary",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Advocate personal case diary (Bangla) - Android app",
+  "scripts": {
+    "sync": "cap sync android",
+    "assets": "capacitor-assets generate --android",
+    "serve": "npx http-server www -p 8080 -c-1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/local-notifications": "^8.0.0",
+    "@capacitor/share": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "^8.0.0"
+  }
+}
