@@ -1,10 +1,8 @@
-// Firebase Console → ⚙ Project settings → Your apps → Web app থেকে পাওয়া মানগুলো
-// নিচের "" এর ভেতরে বসান। ফাঁকা রাখলে অ্যাপ আগের মতো শুধু ফোনে চলবে (লগইন ছাড়া)।
 window.FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyDO-D5curv0U1p1ZnmlcAxlmziBnuAy3Bw",
+  authDomain: "case-diary-85c63.firebaseapp.com",
+  projectId: "case-diary-85c63",
+  storageBucket: "case-diary-85c63.firebasestorage.app",
+  messagingSenderId: "998971192769",
+  appId: "1:998971192769:web:42a3e23ed759c90a496b40"
 };
