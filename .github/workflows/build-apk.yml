@@ -30,7 +30,10 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      - name: অ্যান্ড্রয়েড SDK লাইসেন্স গ্রহণ
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
 
       - name: প্যাকেজ ইনস্টল
         run: npm install --no-audit --no-fund
