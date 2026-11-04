@@ -12,10 +12,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: দরকারি ফাইল আছে কিনা যাচাই
+        run: |
+          missing=0
+          for f in package.json capacitor.config.json www/index.html www/app.js www/app.css scripts/patch-android.js assets/icon-only.png assets/icon-foreground.png assets/icon-background.png; do
+            if [ ! -f "$f" ]; then echo "::error::ফাইল পাওয়া যায়নি: $f"; missing=1; fi
+          done
+          echo "রিপোজিটরির ফাইল:"; ls -A
+          exit $missing
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - uses: actions/setup-java@v4
         with:
@@ -25,7 +33,7 @@ jobs:
       - uses: android-actions/setup-android@v3
 
       - name: প্যাকেজ ইনস্টল
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: অ্যান্ড্রয়েড প্রজেক্ট তৈরি
         run: npx cap add android
