@@ -15,7 +15,7 @@ jobs:
       - name: দরকারি ফাইল আছে কিনা যাচাই
         run: |
           missing=0
-          for f in package.json capacitor.config.json www/index.html www/app.js www/app.css scripts/patch-android.js assets/icon-only.png assets/icon-foreground.png assets/icon-background.png; do
+          for f in package.json capacitor.config.json src/cloud.js www/index.html www/app.js www/app.css www/pdf.js www/firebase-config.js scripts/patch-android.js assets/icon-only.png assets/icon-foreground.png assets/icon-background.png; do
             if [ ! -f "$f" ]; then echo "::error::ফাইল পাওয়া যায়নি: $f"; missing=1; fi
           done
           echo "রিপোজিটরির ফাইল:"; ls -A
@@ -37,6 +37,9 @@ jobs:
 
       - name: প্যাকেজ ইনস্টল
         run: npm install --no-audit --no-fund
+
+      - name: ক্লাউড (লগইন ও সিঙ্ক) কোড তৈরি
+        run: npm run build:web
 
       - name: অ্যান্ড্রয়েড প্রজেক্ট তৈরি
         run: npx cap add android
