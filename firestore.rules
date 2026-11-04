@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// কেস ডায়েরি — Firestore নিরাপত্তা নিয়ম।
+// Firebase Console → Firestore Database → Rules ট্যাবে পুরোটা পেস্ট করে Publish করুন।
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function chamberPath(cid) { return /databases/$(database)/documents/chambers/$(cid); }
+    function isMember(cid) { return signedIn() && exists(/databases/$(database)/documents/chambers/$(cid)/members/$(request.auth.uid)); }
+    function isAdmin(cid) {
+      return signedIn() && get(/databases/$(database)/documents/chambers/$(cid)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // কে কোন চেম্বারে আছে তার ইঙ্গিত (শুধু নিজে দেখতে/লিখতে পারবে)
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // যোগ দেওয়ার কোড: কেউ একটি নির্দিষ্ট কোড খুঁজতে পারবে, কিন্তু তালিকা দেখতে পারবে না
+    match /joinCodes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /chambers/{cid} {
+      allow read: if isMember(cid);
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isAdmin(cid);
+
+      match /members/{uid} {
+        allow read: if isMember(cid);
+        // অ্যাডভোকেট নিজের চেম্বারে নিজেকে যোগ করতে পারবে; ক্লার্ক সঠিক কোড দিয়ে নিজেকে যোগ করতে পারবে
+        allow create: if signedIn() && request.auth.uid == uid && (
+          (request.resource.data.role == 'admin' && get(chamberPath(cid)).data.ownerUid == uid) ||
+          (request.resource.data.role == 'clerk' && request.resource.data.code == get(chamberPath(cid)).data.code)
+        );
+        allow update: if isAdmin(cid);
+        // অ্যাডভোকেট ক্লার্ককে সরাতে পারবে; ক্লার্ক নিজে বের হতে পারবে
+        allow delete: if (isAdmin(cid) && uid != request.auth.uid)
+                      || (signedIn() && request.auth.uid == uid && resource.data.role == 'clerk');
+      }
+
+      // মামলা, তারিখের রেকর্ড, মক্কেল, ফি — চেম্বারের সবাই দেখতে ও লিখতে পারবে
+      match /{coll}/{docId} {
+        allow read, write: if coll in ['cases', 'hearings', 'clients', 'fees'] && isMember(cid);
+      }
+    }
+  }
+}
