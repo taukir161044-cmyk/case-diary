@@ -1,9 +1,10 @@
 {
   "appId": "com.fahad.casediary",
-  "appName": "কেস ডায়েরি",
+  "appName": "Case Diary",
   "webDir": "www",
   "plugins": {
     "LocalNotifications": {
+      "smallIcon": "ic_stat_case",
       "iconColor": "#0F4C5C"
     }
   }

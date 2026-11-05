@@ -315,3 +315,19 @@ main { max-width: 680px; margin: 0 auto; padding: 14px 14px 20px; }
 .setting:last-child { border-bottom: 0; }
 .setting input[type=time] { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; }
 .switch { width: 24px; height: 24px; accent-color: var(--primary); }
+
+/* ---------- আদালত বাছাই (combobox) ---------- */
+.combo { position: relative; }
+.combo input { padding-right: 44px; }
+.combo-btn { position: absolute; right: 4px; top: 4px; width: 38px; height: 38px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 18px; }
+.combo-list { margin-top: 6px; max-height: 46vh; overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+.combo-list .opt { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 15.5px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.combo-list .opt:last-child { border-bottom: 0; }
+.combo-list .opt small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.combo-list .opt:active, .combo-list .opt.on { background: var(--soon-bg); }
+.combo-list .opt.none { color: var(--muted); font-size: 14px; }
+
+.credit { text-align: center; color: var(--muted); font-size: 12.5px; padding: 4px 16px 16px; letter-spacing: .2px; }
+.credit b { color: var(--primary-2); font-weight: 600; }
+details summary { list-style: none; }
+details summary::-webkit-details-marker { display: none; }

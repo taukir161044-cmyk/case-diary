@@ -58,14 +58,14 @@ const relChip = s => { if (!s) return ''; const r = rel(s); return `<span class=
    ====================================================================== */
 const KEY = 'caseDiary.v1';
 const EMPTY = () => ({
-  v: 1, cases: [], hearings: [], clients: [], fees: [],
+  v: 1, cases: [], hearings: [], clients: [], fees: [], courts: [],
   settings: { remind: true, evening: '20:00', morning: '07:00', lastBackup: '', askedPerm: false }
 });
 const normalize = d => {
   const e = EMPTY();
   return {
     ...e, ...d,
-    cases: d.cases || [], hearings: d.hearings || [], clients: d.clients || [], fees: d.fees || [],
+    cases: d.cases || [], hearings: d.hearings || [], clients: d.clients || [], fees: d.fees || [], courts: d.courts || [],
     settings: { ...e.settings, ...(d.settings || {}) }
   };
 };
@@ -85,11 +85,14 @@ function save() {
 }
 
 /* ---------- ক্লাউড (একাধিক ফোনে একই অ্যাকাউন্ট) ---------- */
-const COLLS = ['cases', 'hearings', 'clients', 'fees'];
+const COLLS = ['cases', 'hearings', 'clients', 'fees', 'courts'];
 const LEGACY_KEY = 'caseDiary.legacy';
+const DATA_COLLS = ['cases', 'hearings', 'clients', 'fees'];
 const Cloud = window.Cloud || { configured: false };
 const auth = { user: null, profile: null, unsub: null, ready: false, status: 'synced', members: null, legacyAsked: false };
 const cloudOn = () => !!(Cloud.configured && auth.profile);
+const isClerk = () => cloudOn() && auth.profile.role === 'clerk';     // ক্লার্ক ফি-র হিসাব দেখতে পায় না
+const canManage = () => !cloudOn() || auth.profile.role === 'admin';  // আদালতের তালিকা বদলানো ইত্যাদি
 const P = (c, o) => ({ c, put: o });
 const D = (c, id) => ({ c, del: id });
 
@@ -120,6 +123,32 @@ const feeOf = id => {
   return { agreed, received, due: Math.max(0, agreed - received) };
 };
 const isActive = c => c.status !== 'disposed';
+
+/* ---------- আদালতের তালিকা ---------- */
+const sortedCourts = () => [...db.courts].sort((a, b) => (a.sort ?? 1e9) - (b.sort ?? 1e9) || a.name.localeCompare(b.name, 'bn'));
+const courtRank = name => { const i = sortedCourts().findIndex(c => c.name === name); return i < 0 ? 1e6 : i; };
+function seedCourts() {
+  if (db.courts.length || !Array.isArray(window.DEFAULT_COURTS)) return;
+  if (cloudOn() && auth.profile.role !== 'admin') return;   // ক্লাউডে শুধু অ্যাডভোকেট তালিকা বসায়
+  const ops = window.DEFAULT_COURTS.map((name, i) => {
+    const d = { id: 'dc' + String(i + 1).padStart(3, '0'), name, sort: i + 1 };
+    db.courts.push(d); return P('courts', d);
+  });
+  if (cloudOn()) commit(ops); else save();
+}
+function addCourts(names) {
+  const have = new Set(db.courts.map(c => c.name)), ops = [];
+  let sort = Math.max(0, ...db.courts.map(c => c.sort || 0));
+  for (let n of names) {
+    n = String(n || '').replace(/[\u200b\u200c]/g, '').replace(/^[\s*•\-–]+/, '').replace(/\s+/g, ' ').trim();
+    if (!n || have.has(n)) continue;
+    have.add(n);
+    const d = { id: uid(), name: n, sort: ++sort };
+    db.courts.push(d); ops.push(P('courts', d));
+  }
+  if (ops.length) commit(ops);
+  return ops.length;
+}
 
 const STATUS = { running: 'চলমান', stayed: 'স্থগিত', disposed: 'নিষ্পত্তি' };
 const TYPES = ['দেওয়ানী', 'ফৌজদারী', 'পারিবারিক', 'অন্যান্য'];
@@ -403,8 +432,8 @@ function vCase(id) {
     </div>
     <div class="section-title">তারিখের ইতিহাস (${bn(hs.length)})</div>
     <div class="card">${hist}</div>
-    <div class="section-title">ফি ও হিসাব <button class="btn small" data-action="fee" data-case="${id}">＋ যোগ</button></div>
-    <div class="card">${feeHTML}</div>
+    ${isClerk() ? '' : `<div class="section-title">ফি ও হিসাব <button class="btn small" data-action="fee" data-case="${id}">＋ যোগ</button></div>
+    <div class="card">${feeHTML}</div>`}
     ${c.notes ? `<div class="section-title">নোট</div><div class="card" style="white-space:pre-wrap">${esc(c.notes)}</div>` : ''}
     ${c.updatedBy ? `<div class="tiny muted" style="text-align:center;margin-top:8px">সর্বশেষ বদল: ${esc(c.updatedBy)}, ${fmtDate(toISO(new Date(c.updatedAt)))}</div>` : ''}
     <button class="btn danger block mt" data-action="del-case" data-id="${id}">এই মামলা মুছে ফেলুন</button>`;
@@ -420,7 +449,7 @@ function clientDue(clientId) {
 function vClients() {
   const list = [...db.clients].sort((a, b) => a.name.localeCompare(b.name, 'bn'));
   const html = list.length ? list.map(cl => {
-    const n = db.cases.filter(c => c.clientId === cl.id && isActive(c)).length, due = clientDue(cl.id);
+    const n = db.cases.filter(c => c.clientId === cl.id && isActive(c)).length, due = isClerk() ? 0 : clientDue(cl.id);
     return `<a class="card" href="#/client/${cl.id}"><div class="row between"><b>${esc(cl.name)}</b>${due ? `<span class="chip late">বাকি ${money(due)}</span>` : ''}</div>
       <div class="muted small mt">${cl.phone ? '📞 ' + esc(bn(cl.phone)) + ' · ' : ''}চলমান মামলা: ${bn(n)}</div></a>`;
   }).join('') : `<div class="empty"><b>কোনো মক্কেল নেই</b>মামলা যোগ করার সময়ও মক্কেল যোগ করা যায়।</div>`;
@@ -435,9 +464,9 @@ function vClient(id) {
     <dl class="kv">${[['ফোন', cl.phone ? `<a href="tel:${esc(cl.phone)}" style="color:var(--primary-2);font-weight:600">${esc(bn(cl.phone))}</a>` : ''], ['ঠিকানা', cl.address ? esc(cl.address) : ''], ['নোট', cl.notes ? esc(cl.notes) : '']]
       .filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
     <div class="row mt"><button class="btn grow" data-action="edit-client" data-id="${id}">সম্পাদনা</button></div></div>
-    <div class="section-title">হিসাব</div>
+    ${isClerk() ? '' : `<div class="section-title">হিসাব</div>
     <div class="card"><div class="money"><div><small>ধার্য</small><b>${money(sum.a)}</b></div><div><small>প্রাপ্ত</small><b>${money(sum.r)}</b></div>
-      <div class="${sum.d ? 'due' : 'zero'}"><small>বাকি</small><b>${money(sum.d)}</b></div></div></div>
+      <div class="${sum.d ? 'due' : 'zero'}"><small>বাকি</small><b>${money(sum.d)}</b></div></div></div>`}
     <div class="section-title">মামলা (${bn(cs.length)})</div>
     ${cs.length ? cs.map(caseCard).join('') : '<div class="empty">এই মক্কেলের কোনো মামলা যোগ করা হয়নি।</div>'}
     <button class="btn danger block mt" data-action="del-client" data-id="${id}">মক্কেল মুছুন</button>`;
@@ -474,7 +503,7 @@ const causeDate = id => (id && /^\d{4}-\d{2}-\d{2}$/.test(id)) ? id : today();
 
 function causeGroups(date) {
   const list = db.cases.filter(c => isActive(c) && c.nextDate === date)
-    .sort((a, b) => (a.court || '').localeCompare(b.court || '', 'bn') || (a.caseNo || '').localeCompare(b.caseNo || '', 'bn', { numeric: true }));
+    .sort((a, b) => courtRank(a.court) - courtRank(b.court) || (a.court || '').localeCompare(b.court || '', 'bn') || (a.caseNo || '').localeCompare(b.caseNo || '', 'bn', { numeric: true }));
   const groups = [];
   for (const c of list) {
     let g = groups[groups.length - 1];
@@ -490,7 +519,7 @@ function causeData(date) {
   return {
     title: 'কজ লিস্ট', chamber: (auth.profile && auth.profile.chamberName) || '', dateLine: fmtLong(date),
     countLine: list.length ? `মোট ${bn(list.length)}টি মামলা` : 'কোনো মামলা নেই',
-    footer: 'কেস ডায়েরি · তৈরি: ' + fmtDate(today()),
+    footer: 'Case Diary · App built by Adv Abu Fahad Taukir · ' + fmtDate(today()),
     groups: groups.map(g => ({
       court: g.court,
       items: g.items.map(({ c, last }) => ({
@@ -597,8 +626,11 @@ function vMore() {
         <input type="checkbox" class="switch" id="sRemind" ${s.remind ? 'checked' : ''}></div>
       <div class="setting"><div>আগের দিন সন্ধ্যায়</div><input type="time" id="sEvening" value="${esc(s.evening)}"></div>
       <div class="setting"><div>তারিখের দিন সকালে</div><input type="time" id="sMorning" value="${esc(s.morning)}"></div>
+      <div id="notifyBox" class="mt"><div class="small muted">অবস্থা দেখা হচ্ছে…</div></div>
       <button class="btn small mt" data-action="test-notify">পরীক্ষামূলক নোটিফিকেশন (৫ সেকেন্ডে)</button>
     </div>
+    <div class="section-title">আদালত</div>
+    <a class="card" href="#/courts"><div class="row between"><div><div class="strong">আদালতের তালিকা</div><div class="small muted">মামলা যোগ করার সময় এখান থেকে আদালত বাছা যায়</div></div><b>${bn(db.courts.length)}টি ›</b></div></a>
     <div class="section-title">ব্যাকআপ</div>
     <div class="card">
       <div class="small muted">তথ্য শুধু এই ফোনেই থাকে। নিয়মিত ব্যাকআপ নিয়ে নিজের Gmail/Drive/WhatsApp-এ পাঠিয়ে রাখুন।</div>
@@ -608,7 +640,7 @@ function vMore() {
     </div>
     <div class="section-title">তথ্য</div>
     <div class="card small muted">মোট মামলা: ${bn(db.cases.length)} · মক্কেল: ${bn(db.clients.length)} · তারিখের রেকর্ড: ${bn(db.hearings.length)}<br>
-      ${cloudOn() ? 'লগইন করা থাকায় তথ্য আপনার নিজের Firebase প্রজেক্টে (Google সার্ভারে) জমা হচ্ছে এবং চেম্বারের সবার ফোনে মিলে যাচ্ছে। ইন্টারনেট না থাকলেও কাজ চলে, নেট এলে নিজে সিঙ্ক হয়।' : 'ইন্টারনেট ছাড়াই সব কাজ করে। লগইন না করলে কোনো তথ্য কোথাও পাঠানো হয় না।'}<br>কেস ডায়েরি v2.0</div>`;
+      ${cloudOn() ? 'লগইন করা থাকায় তথ্য আপনার নিজের Firebase প্রজেক্টে (Google সার্ভারে) জমা হচ্ছে এবং চেম্বারের সবার ফোনে মিলে যাচ্ছে। ইন্টারনেট না থাকলেও কাজ চলে, নেট এলে নিজে সিঙ্ক হয়।' : 'ইন্টারনেট ছাড়াই সব কাজ করে। লগইন না করলে কোনো তথ্য কোথাও পাঠানো হয় না।'}<br>কেস ডায়েরি v2.1 · App built by Adv Abu Fahad Taukir</div>`;
   return {
     title: 'আরও', html,
     after() {
@@ -619,6 +651,7 @@ function vMore() {
       $('#sEvening').addEventListener('change', e => { db.settings.evening = e.target.value || '20:00'; save(); });
       $('#sMorning').addEventListener('change', e => { db.settings.morning = e.target.value || '07:00'; save(); });
       if (cloudOn() && auth.profile.role === 'admin' && auth.members === null) loadMembers();
+      refreshNotifyPanel();
     }
   };
 }
@@ -629,7 +662,6 @@ function vMore() {
 function caseForm(id) {
   const old = id ? getCase(id) : null;
   const c = old || { type: 'দেওয়ানী', status: 'running', ourSide: 'p' };
-  const courts = uniq(db.cases.map(x => x.court).filter(Boolean));
   const hasHist = old && hearingsOf(id).length > 0;
   const body = `
     ${field('মামলা নং *', `<input name="caseNo" value="${esc(c.caseNo)}" placeholder="যেমন: পারিবারিক মামলা ১২/২০২৬">`)}
@@ -638,7 +670,10 @@ function caseForm(id) {
       ${field('অবস্থা', `<select name="status">${options(Object.entries(STATUS), c.status)}</select>`)}
     </div>
     ${field('বিষয় / ধারা', `<input name="subject" value="${esc(c.subject)}" placeholder="যেমন: ভরণপোষণ, দেনমোহর, ৪০৬ ধারা">`)}
-    ${field('আদালত', `<input name="court" list="courtList" value="${esc(c.court)}" placeholder="যেমন: পারিবারিক আদালত, জামালপুর"><datalist id="courtList">${courts.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`)}
+    <div class="field"><span>আদালত</span>
+      <div class="combo"><input name="court" id="courtInput" autocomplete="off" value="${esc(c.court)}" placeholder="তালিকা থেকে বাছুন অথবা লিখুন">
+        <button type="button" class="combo-btn" id="courtBtn" aria-label="আদালতের তালিকা">▾</button>
+        <div class="combo-list" id="courtPick" hidden></div></div></div>
 
     <div class="formsec">পক্ষগণ</div>
     ${field('বাদী / আবেদনকারী', `<input name="plaintiff" value="${esc(c.plaintiff)}">`)}
@@ -678,6 +713,7 @@ function caseForm(id) {
       nextDate: v.nextDate || '', nextPurpose: (v.nextPurpose || '').trim(), notes: (v.notes || '').trim()
     };
     if (v.prevManual !== undefined) data.prevManual = v.prevManual || '';
+    if (data.court && canManage() && !db.courts.some(x => x.name === data.court)) addCourts([data.court]);
     let target = old;
     if (old) Object.assign(old, data);
     else { target = { id: uid(), createdAt: Date.now(), ...data }; db.cases.push(target); }
@@ -687,6 +723,7 @@ function caseForm(id) {
     if (old) render(); else location.hash = '#/case/' + target.id;
   });
   bindWeekendHint(f, 'nextDate');
+  bindCourtCombo(f);
 }
 
 /* ======================================================================
@@ -784,7 +821,7 @@ const plugin = n => window.Capacitor?.Plugins?.[n];
 const isNative = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 
 async function doBackup() {
-  const json = JSON.stringify({ ...db, cloud: undefined }, null, 1), name = `case-diary-backup-${today()}.json`;
+  const json = JSON.stringify({ ...db, fees: isClerk() ? [] : db.fees, cloud: undefined }, null, 1), name = `case-diary-backup-${today()}.json`;
   try {
     const fs = plugin('Filesystem'), sh = plugin('Share');
     if (isNative() && fs && sh) {
@@ -827,12 +864,77 @@ $('#restoreFile').addEventListener('change', async e => {
 });
 
 /* ======================================================================
+   আদালত বাছাই (মামলার ফর্মে) ও আদালতের তালিকা
+   ====================================================================== */
+function bindCourtCombo(form) {
+  const inp = form.querySelector('#courtInput'), btn = form.querySelector('#courtBtn'), box = form.querySelector('#courtPick');
+  if (!inp) return;
+  const used = {}; db.cases.forEach(c => { if (c.court) used[c.court] = (used[c.court] || 0) + 1; });
+  const all = () => sortedCourts().map(c => c.name)
+    .map((n, i) => ({ n, i, u: used[n] || 0 })).sort((a, b) => b.u - a.u || a.i - b.i).map(x => x.n);
+  const draw = showAll => {
+    const q = norm(inp.value.trim()), list = all();
+    const exact = list.includes(inp.value.trim());
+    const hit = (showAll || !q || exact) ? list : list.filter(n => norm(n).includes(q));
+    box.innerHTML = hit.length
+      ? hit.map(n => `<div class="opt${n === inp.value.trim() ? ' on' : ''}" data-court="${esc(n)}">${esc(n)}${used[n] ? `<small>${bn(used[n])}টি মামলা</small>` : ''}</div>`).join('')
+      : `<div class="opt none">${list.length ? 'তালিকায় নেই — লিখে রাখলে সেভ করার সময় তালিকায় যোগ হবে' : 'আদালতের তালিকা এখনো খালি (আরও → আদালতের তালিকা)'}</div>`;
+    box.hidden = false;
+  };
+  const hide = () => { box.hidden = true; };
+  inp.addEventListener('focus', () => draw(false));
+  inp.addEventListener('input', () => draw(false));
+  btn.addEventListener('click', () => { if (box.hidden) { draw(true); } else hide(); });
+  ['pointerdown', 'mousedown'].forEach(ev => box.addEventListener(ev, e => e.preventDefault()));   // ট্যাপে ফোকাস না হারাতে
+  box.addEventListener('click', e => {
+    const o = e.target.closest('[data-court]'); if (!o) return;
+    inp.value = o.dataset.court; hide(); inp.blur();
+  });
+  inp.addEventListener('blur', () => setTimeout(hide, 120));
+}
+
+const courtUse = name => db.cases.filter(c => c.court === name && isActive(c)).length;
+const courtQ = { q: '' };
+function courtsListHTML() {
+  const q = norm(courtQ.q.trim()), list = sortedCourts().filter(c => !q || norm(c.name).includes(q));
+  if (!list.length) return '<div class="empty"><b>কিছু পাওয়া যায়নি</b></div>';
+  return `<div class="card" style="padding:4px 14px">${list.map(c => `<div class="pay" style="align-items:center">
+      <div class="grow">${esc(c.name)}${courtUse(c.name) ? ` <span class="chip soon">${bn(courtUse(c.name))}টি মামলা</span>` : ''}</div>
+      ${canManage() ? `<button class="linkbtn red" data-action="del-court" data-id="${c.id}">মুছুন</button>` : ''}</div>`).join('')}</div>`;
+}
+function vCourts() {
+  const html = `
+    <div class="small muted" style="margin:0 4px 10px">মামলা যোগ করার সময় এই তালিকা থেকে আদালত বেছে নেওয়া যায়। কজ লিস্টেও আদালত এই ক্রমে সাজানো হয়।</div>
+    ${canManage() ? `<div class="card">
+      <label class="field"><span>নতুন আদালত যোগ করুন</span><input id="newCourt" placeholder="আদালতের নাম"></label>
+      <button class="btn primary block" data-action="add-court">যোগ করুন</button>
+      <details style="margin-top:12px"><summary class="small strong" style="cursor:pointer">একসাথে অনেকগুলো যোগ করুন</summary>
+        <label class="field mt"><span>প্রতি লাইনে একটি আদালত</span><textarea id="bulkCourts" placeholder="সিভিল জজ আদালত, জামালপুর&#10;বিশেষ জজ আদালত, জামালপুর"></textarea></label>
+        <button class="btn block" data-action="bulk-courts">সব যোগ করুন</button></details>
+      <button class="linkbtn mt" data-action="restore-courts">জামালপুরের ডিফল্ট তালিকা থেকে বাদ পড়াগুলো ফেরান</button></div>` : ''}
+    <input class="search" id="courtSearch" type="search" placeholder="আদালত খুঁজুন…" value="${esc(courtQ.q)}">
+    <div class="section-title">মোট ${bn(db.courts.length)}টি আদালত</div>
+    <div id="courtList">${courtsListHTML()}</div>`;
+  return {
+    title: 'আদালতের তালিকা', back: '#/more', html,
+    after() { $('#courtSearch').addEventListener('input', e => { courtQ.q = e.target.value; $('#courtList').innerHTML = courtsListHTML(); }); }
+  };
+}
+
+/* ======================================================================
    নোটিফিকেশন (শুধু অ্যান্ড্রয়েড অ্যাপে)
    ====================================================================== */
-const CHANNEL = 'reminders';
+const CHANNEL = 'reminders', TEST_ID = 1999999999;
+const lnPlugin = () => (isNative() ? plugin('LocalNotifications') : null);
+
+async function exactAllowed() {                       // Android 12+: "Alarms & reminders" অনুমতি
+  const ln = lnPlugin();
+  try { if (!ln || !ln.checkExactNotificationSetting) return true; return (await ln.checkExactNotificationSetting()).exact_alarm === 'granted'; }
+  catch (e) { return true; }
+}
 async function ensureNotifyPermission(interactive) {
-  const ln = plugin('LocalNotifications');
-  if (!isNative() || !ln) { if (interactive) toast('নোটিফিকেশন শুধু অ্যান্ড্রয়েড অ্যাপে কাজ করবে'); return false; }
+  const ln = lnPlugin();
+  if (!ln) { if (interactive) toast('নোটিফিকেশন শুধু অ্যান্ড্রয়েড অ্যাপে কাজ করবে'); return false; }
   try {
     let p = await ln.checkPermissions();
     if (p.display !== 'granted') p = await ln.requestPermissions();
@@ -841,49 +943,73 @@ async function ensureNotifyPermission(interactive) {
       scheduleReminders();
       return true;
     }
-    if (interactive) toast('ফোনের সেটিংস থেকে নোটিফিকেশনের অনুমতি দিন');
-  } catch (e) { console.error(e); }
+    if (interactive) toast('অনুমতি পাওয়া যায়নি — ফোনের Settings → Apps → Case Diary → Notifications চালু করুন');
+  } catch (e) { console.error(e); if (interactive) toast('নোটিফিকেশনের অনুমতি চাওয়া যায়নি'); }
   return false;
 }
 
 const at = (iso, hhmm) => { const [y, m, d] = parts(iso); const [hh, mm] = (hhmm || '08:00').split(':').map(Number); return new Date(y, m - 1, d, hh, mm || 0, 0); };
-let schedTimer;
-function scheduleReminders() {
+let schedTimer, schedChain = Promise.resolve();
+function scheduleReminders() {                         // এক সময়ে একটিই চলবে, যাতে একটি আরেকটির সূচি মুছে না ফেলে
   clearTimeout(schedTimer);
-  schedTimer = setTimeout(async () => {
-    const ln = plugin('LocalNotifications');
-    if (!isNative() || !ln) return;
-    try {
-      const pending = await ln.getPending();
-      if (pending.notifications.length) await ln.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
-      if (!db.settings.remind) return;
-      const perm = await ln.checkPermissions();
-      if (perm.display !== 'granted') return;
+  schedTimer = setTimeout(() => { schedChain = schedChain.then(doSchedule).catch(e => console.warn('reminder', e)); }, 600);
+}
+async function doSchedule() {
+  const ln = lnPlugin(); if (!ln) return;
+  const pending = await ln.getPending();
+  const old = pending.notifications.filter(n => n.id !== TEST_ID);
+  if (old.length) await ln.cancel({ notifications: old.map(n => ({ id: n.id })) });
+  if (!db.settings.remind) return;
+  const perm = await ln.checkPermissions();
+  if (perm.display !== 'granted') return;
+  const exact = await exactAllowed();                  // অনুমতি না থাকলে সেটিংস পর্দা না খুলে সাধারণ (কয়েক মিনিট দেরিতে বাজতে পারে) অ্যালার্ম
+  try { await ln.createChannel({ id: CHANNEL, name: 'মামলার তারিখ', description: 'মামলার তারিখের রিমাইন্ডার', importance: 4, visibility: 1, vibration: true }); } catch (e) { /* ignore */ }
 
-      const t = today(), now = Date.now();
-      const byDate = {};
-      for (const c of db.cases) if (isActive(c) && c.nextDate && c.nextDate >= t) (byDate[c.nextDate] ||= []).push(c);
-      const dates = Object.keys(byDate).sort().slice(0, 40);
-      const list = arr => arr.slice(0, 4).map(c => `• ${c.caseNo}${c.plaintiff || c.defendant ? ' — ' + (c.plaintiff || '…') + ' বনাম ' + (c.defendant || '…') : ''}`).join('\n') + (arr.length > 4 ? `\n…আরও ${bn(arr.length - 4)}টি` : '');
-      const notifications = [];
-      for (const d of dates) {
-        const arr = byDate[d], n = Number(d.replace(/-/g, '')) * 10;
-        const eve = at(addDays(d, -1), db.settings.evening), mor = at(d, db.settings.morning);
-        if (eve.getTime() > now) notifications.push({ id: n + 1, title: `আগামীকাল ${bn(arr.length)}টি মামলার তারিখ`, body: list(arr), channelId: CHANNEL, schedule: { at: eve, allowWhileIdle: true } });
-        if (mor.getTime() > now) notifications.push({ id: n + 2, title: `আজ ${bn(arr.length)}টি মামলার তারিখ`, body: list(arr), channelId: CHANNEL, schedule: { at: mor, allowWhileIdle: true } });
-      }
-      if (notifications.length) await ln.schedule({ notifications });
-    } catch (e) { console.warn('reminder', e); }
-  }, 500);
+  const t = today(), now = Date.now();
+  const byDate = {};
+  for (const c of db.cases) if (isActive(c) && c.nextDate && c.nextDate >= t) (byDate[c.nextDate] ||= []).push(c);
+  const dates = Object.keys(byDate).sort().slice(0, 40);
+  const list = arr => arr.slice(0, 4).map(c => `• ${c.caseNo}${c.plaintiff || c.defendant ? ' — ' + (c.plaintiff || '…') + ' বনাম ' + (c.defendant || '…') : ''}`).join('\n') + (arr.length > 4 ? `\n…আরও ${bn(arr.length - 4)}টি` : '');
+  const notifications = [];
+  for (const d of dates) {
+    const arr = byDate[d], n = Number(d.replace(/-/g, '')) * 10;
+    const eve = at(addDays(d, -1), db.settings.evening), mor = at(d, db.settings.morning);
+    if (eve.getTime() > now) notifications.push({ id: n + 1, title: `আগামীকাল ${bn(arr.length)}টি মামলার তারিখ`, body: list(arr), channelId: CHANNEL, isExactNotification: exact, schedule: { at: eve, allowWhileIdle: true } });
+    if (mor.getTime() > now) notifications.push({ id: n + 2, title: `আজ ${bn(arr.length)}টি মামলার তারিখ`, body: list(arr), channelId: CHANNEL, isExactNotification: exact, schedule: { at: mor, allowWhileIdle: true } });
+  }
+  if (notifications.length) await ln.schedule({ notifications });
 }
 
 async function testNotify() {
-  const ln = plugin('LocalNotifications');
+  const ln = lnPlugin();
   if (!(await ensureNotifyPermission(true))) return;
   try {
-    await ln.schedule({ notifications: [{ id: 1, title: 'কেস ডায়েরি', body: 'রিমাইন্ডার ঠিকভাবে কাজ করছে ✓', channelId: CHANNEL, schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true } }] });
+    await ln.schedule({ notifications: [{ id: TEST_ID, title: 'কেস ডায়েরি', body: 'রিমাইন্ডার ঠিকভাবে কাজ করছে ✓', channelId: CHANNEL, isExactNotification: await exactAllowed(), schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true } }] });
     toast('৫ সেকেন্ড পরে নোটিফিকেশন আসবে — অ্যাপ থেকে বেরিয়ে দেখুন');
-  } catch (e) { toast('নোটিফিকেশন পাঠানো যায়নি'); }
+  } catch (e) { console.warn(e); toast('নোটিফিকেশন পাঠানো যায়নি: ' + (e && e.message ? e.message : e)); }
+}
+
+async function notifyStatus() {
+  const ln = lnPlugin(); if (!ln) return { native: false };
+  const st = { native: true, perm: 'unknown', exact: 'unknown', pending: 0 };
+  try { st.perm = (await ln.checkPermissions()).display; } catch (e) { /* ignore */ }
+  try { st.exact = ln.checkExactNotificationSetting ? (await ln.checkExactNotificationSetting()).exact_alarm : 'granted'; } catch (e) { /* ignore */ }
+  try { st.pending = (await ln.getPending()).notifications.filter(n => n.id !== TEST_ID).length; } catch (e) { /* ignore */ }
+  return st;
+}
+function notifyPanelHTML(st) {
+  if (!st) return '<div class="small muted">অবস্থা দেখা হচ্ছে…</div>';
+  if (!st.native) return '<div class="small muted">নোটিফিকেশন শুধু ফোনের অ্যাপে কাজ করে।</div>';
+  const row = (ok, label, fixBtn) => `<div class="setting"><div>${ok ? '✅' : '❌'} ${label}</div>${ok ? '' : fixBtn}</div>`;
+  return row(st.perm === 'granted', 'নোটিফিকেশনের অনুমতি', '<button class="btn small" data-action="notify-perm">অনুমতি দিন</button>')
+    + row(st.exact === 'granted', 'ঠিক সময়ে বাজার অনুমতি', '<button class="btn small" data-action="notify-exact">চালু করুন</button>')
+    + `<div class="setting"><div>🔔 সূচিতে থাকা রিমাইন্ডার</div><b>${bn(st.pending)}টি</b></div>`
+    + `<div class="hint" style="margin-top:8px">সব ✅ থাকার পরও না এলে ফোনের <b>Settings → Apps → Case Diary → Battery</b> এ গিয়ে <b>Unrestricted / No restrictions</b> দিন এবং <b>Autostart</b> (Xiaomi/Oppo/Vivo/Realme/Infinix) চালু করুন।</div>`;
+}
+async function refreshNotifyPanel() {
+  const box = $('#notifyBox'); if (!box) return;
+  const st = await notifyStatus();
+  const b2 = $('#notifyBox'); if (b2) b2.innerHTML = notifyPanelHTML(st);
 }
 
 /* ======================================================================
@@ -967,7 +1093,7 @@ function showGate(mode, msg) {
   let m = msg || '';
   if (!m) { try { m = localStorage.getItem('caseDiary.gateMsg') || ''; } catch (e) { /* ignore */ } }   // গেট বন্ধ হলে তবেই মুছবে
   const g = $('#gate');
-  g.innerHTML = gateHTML(mode, m); g.hidden = false; g.scrollTop = 0;
+  g.innerHTML = gateHTML(mode, m) + '<div class="credit" style="margin-top:20px">App built by <b>Adv Abu Fahad Taukir</b></div>'; g.hidden = false; g.scrollTop = 0;
 }
 function hideGate() {
   const g = $('#gate'); g.hidden = true; g.innerHTML = '';
@@ -1027,18 +1153,18 @@ async function gateReset() {
 
 /* ---------- ক্লাউড চালু / বন্ধ ---------- */
 const legacyData = () => {
-  try { const d = JSON.parse(localStorage.getItem(LEGACY_KEY) || 'null'); return d && COLLS.some(c => (d[c] || []).length) ? d : null; }
+  try { const d = JSON.parse(localStorage.getItem(LEGACY_KEY) || 'null'); return d && DATA_COLLS.some(c => (d[c] || []).length) ? d : null; }
   catch (e) { return null; }
 };
 const legacyCount = () => { const d = legacyData(); return d ? (d.cases || []).length : 0; };
 function stashLegacy() {
-  if (!COLLS.some(c => db[c].length)) return;
-  try { localStorage.setItem(LEGACY_KEY, JSON.stringify(Object.fromEntries(COLLS.map(c => [c, db[c]])))); } catch (e) { /* ignore */ }
+  if (!DATA_COLLS.some(c => db[c].length)) return;
+  try { localStorage.setItem(LEGACY_KEY, JSON.stringify(Object.fromEntries(DATA_COLLS.map(c => [c, db[c]])))); } catch (e) { /* ignore */ }
 }
 function loadLegacyIfEmpty() {
-  if (COLLS.some(c => db[c].length)) return;
+  if (DATA_COLLS.some(c => db[c].length)) return;
   const d = legacyData(); if (!d) return;
-  COLLS.forEach(c => { db[c] = d[c] || []; });
+  DATA_COLLS.forEach(c => { db[c] = d[c] || []; });
   try { localStorage.removeItem(LEGACY_KEY); } catch (e) { /* ignore */ }
   save();
 }
@@ -1049,6 +1175,7 @@ function applyDoc(c, d) {                       // বিদ্যমান অ�
   db[c].push(d); return d;
 }
 function applyRemote(c, up, rem, meta) {
+  if (c === 'fees' && isClerk()) return;
   let changed = false;
   if (meta && meta.reconcile) {
     const keep = new Set(meta.ids), n = db[c].length;
@@ -1058,6 +1185,7 @@ function applyRemote(c, up, rem, meta) {
   for (const d of up) { applyDoc(c, d); changed = true; }
   for (const id of rem) { const i = db[c].findIndex(x => x.id === id); if (i >= 0) { db[c].splice(i, 1); changed = true; } }
   if (changed) scheduleRemoteRender();
+  if (c === 'courts' && meta && meta.reconcile) setTimeout(seedCourts, 50);   // সার্ভারের তালিকা খালি হলে অ্যাডভোকেটের ফোন ডিফল্ট বসায়
 }
 let rrTimer;
 function scheduleRemoteRender() { clearTimeout(rrTimer); rrTimer = setTimeout(() => { save(); softRender(); }, 80); }
@@ -1077,6 +1205,7 @@ function startCloud(p) {
   if (!prev) stashLegacy();                                          // লগইনের আগের শুধু-ফোনের তথ্য আলাদা রাখা
   if (!prev || prev.chamberId !== prof.chamberId || prev.uid !== prof.uid) COLLS.forEach(c => { db[c] = []; });
   auth.profile = prof; auth.ready = false; auth.members = null; auth.legacyAsked = false;
+  if (prof.role === 'clerk') db.fees = [];
   db.cloud = prof; db.settings.skipLogin = false; save();
   hideGate(); setSync(navigator.onLine ? 'synced' : 'offline');
   auth.unsub = Cloud.subscribe(prof.chamberId, {
@@ -1084,7 +1213,7 @@ function startCloud(p) {
     onReady: () => { auth.ready = true; maybeOfferLegacy(); },
     onStatus: s => setSync(!navigator.onLine ? 'offline' : s.pending ? 'pending' : 'synced'),
     onError: onCloudError
-  });
+  }, prof.role === 'clerk' ? COLLS.filter(c => c !== 'fees') : COLLS);
   render();
 }
 
@@ -1129,7 +1258,10 @@ async function doLogout() {
 /* ফোনে জমে থাকা (লগইনের আগের) তথ্য ক্লাউডে তোলা */
 function mergeIntoCloud(src) {
   const ops = [];
-  for (const c of COLLS) for (const d of (src[c] || [])) { if (d && d.id) ops.push(P(c, applyDoc(c, { ...d }))); }
+  for (const c of COLLS) {
+    if ((c === 'fees' && isClerk()) || (c === 'courts' && !canManage())) continue;
+    for (const d of (src[c] || [])) { if (d && d.id) ops.push(P(c, applyDoc(c, { ...d }))); }
+  }
   if (ops.length) commit(ops);
   return ops.length;
 }
@@ -1154,7 +1286,7 @@ function initCloud() {
     auth.user = user;
     if (!user) {
       if (auth.profile) { if (auth.unsub) auth.unsub(); auth.unsub = null; auth.profile = null; }
-      if (db.settings.skipLogin) { render(); return; }
+      if (db.settings.skipLogin) { seedCourts(); render(); return; }
       showGate('login'); return;
     }
     if (cached && cached.uid === user.uid && !auth.profile) startCloud(cached);   // অফলাইনেও সাথে সাথে খুলবে
@@ -1216,7 +1348,7 @@ let lastRoute = '';
 
 function render() {
   const { name, id } = route();
-  const views = { today: () => vToday(), cases: () => vCases(), case: () => vCase(id), clients: () => vClients(), client: () => vClient(id), fees: () => vFees(), more: () => vMore(), causelist: () => vCauseList(id) };
+  const views = { today: () => vToday(), cases: () => vCases(), case: () => vCase(id), clients: () => vClients(), client: () => vClient(id), fees: () => isClerk() ? vToday() : vFees(), more: () => vMore(), causelist: () => vCauseList(id), courts: () => vCourts() };
   if (!views[name]) { location.replace('#/today'); return; }
   const r = views[name]();
   const bar = $('.appbar');
@@ -1224,7 +1356,8 @@ function render() {
   $('#view').innerHTML = r.html;
   const fab = $('#fab');
   if (r.fab) { fab.hidden = false; fab.dataset.action = r.fab.action; fab.setAttribute('aria-label', r.fab.label); } else fab.hidden = true;
-  const tab = { case: 'cases', client: 'clients', causelist: 'today' }[name] || name;
+  const tab = { case: 'cases', client: 'clients', causelist: 'today', courts: 'more' }[name] || name;
+  const feeTab = document.querySelector('#tabs a[data-tab=fees]'); if (feeTab) feeTab.hidden = isClerk();
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   const key = name + '/' + (id || '');
   if (key !== lastRoute) { window.scrollTo(0, 0); lastRoute = key; }
@@ -1251,7 +1384,7 @@ document.addEventListener('click', async e => {
     case 'fee': feeForm(cid); break;
     case 'gate-mode': showGate(el.dataset.mode); break;
     case 'gate-reset': gateReset(); break;
-    case 'gate-skip': db.settings.skipLogin = true; save(); loadLegacyIfEmpty(); hideGate(); render(); break;
+    case 'gate-skip': db.settings.skipLogin = true; save(); loadLegacyIfEmpty(); seedCourts(); hideGate(); render(); break;
     case 'gate-retry': location.reload(); break;
     case 'gate-logout': hardLogout(); break;
     case 'open-gate': db.settings.skipLogin = false; save(); showGate('login'); break;
@@ -1284,7 +1417,33 @@ document.addEventListener('click', async e => {
     case 'cl-pdf': causePDF(el.dataset.date); break;
     case 'backup': doBackup(); break;
     case 'restore': $('#restoreFile').click(); break;
-    case 'test-notify': testNotify(); break;
+    case 'test-notify': await testNotify(); refreshNotifyPanel(); break;
+    case 'notify-perm': await ensureNotifyPermission(true); refreshNotifyPanel(); break;
+    case 'notify-exact': {
+      const ln = lnPlugin();
+      try { if (ln && ln.changeExactNotificationSetting) await ln.changeExactNotificationSetting(); } catch (err) { toast('সেটিংস খোলা যায়নি'); }
+      scheduleReminders(); refreshNotifyPanel(); break;
+    }
+    case 'add-court': {
+      const inp = $('#newCourt'), n = addCourts([inp.value]);
+      if (n) { inp.value = ''; toast('আদালত যোগ হয়েছে'); render(); } else toast(inp.value.trim() ? 'এই আদালত আগেই আছে' : 'আদালতের নাম লিখুন');
+      break;
+    }
+    case 'bulk-courts': {
+      const n = addCourts($('#bulkCourts').value.split('\n'));
+      toast(n ? `${bn(n)}টি আদালত যোগ হয়েছে` : 'নতুন কিছু পাওয়া যায়নি'); if (n) render(); break;
+    }
+    case 'restore-courts': {
+      const n = addCourts(window.DEFAULT_COURTS || []);
+      toast(n ? `${bn(n)}টি আদালত ফেরানো হয়েছে` : 'ডিফল্ট সব আদালত তালিকায় আছে'); if (n) render(); break;
+    }
+    case 'del-court': {
+      const c = db.courts.find(x => x.id === id); if (!c) break;
+      const u = courtUse(c.name);
+      if (await ask(`"${c.name}" তালিকা থেকে মুছবেন?${u ? `\n(${bn(u)}টি মামলায় এই আদালতের নাম থেকে যাবে, শুধু তালিকা থেকে সরবে)` : ''}`, 'মুছুন', true)) {
+        db.courts = db.courts.filter(x => x.id !== id); commit([D('courts', id)]); render();
+      } break;
+    }
     case 'del-case':
       if (await ask('এই মামলা এবং এর সব তারিখের রেকর্ড ও ফি-র হিসাব মুছে যাবে। নিশ্চিত?', 'মুছুন', true)) {
         const ops = [D('cases', id), ...db.hearings.filter(h => h.caseId === id).map(h => D('hearings', h.id)), ...db.fees.filter(f => f.caseId === id).map(f => D('fees', f.id))];
@@ -1313,6 +1472,7 @@ document.addEventListener('click', async e => {
 if (!location.hash) location.replace('#/today');
 render();
 initCloud();
+if (!Cloud.configured || db.settings.skipLogin) seedCourts();
 if (isNative()) { if (db.settings.remind) ensureNotifyPermission(false).then(() => scheduleReminders()); }
 if ('serviceWorker' in navigator && !isNative() && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 // তারিখ বদলে গেলে (অ্যাপ খোলা অবস্থায় রাত পেরোলে) স্ক্রিন হালনাগাদ

@@ -1,6 +1,6 @@
 {
-  "name": "কেস ডায়েরি",
-  "short_name": "কেস ডায়েরি",
+  "name": "Case Diary",
+  "short_name": "Case Diary",
   "description": "অ্যাডভোকেটের ব্যক্তিগত কেস ডায়েরি",
   "lang": "bn",
   "start_url": "./index.html",

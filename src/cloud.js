@@ -15,7 +15,7 @@ import {
 
 const cfg = window.FIREBASE_CONFIG || {};
 const configured = !!(cfg.apiKey && cfg.projectId && cfg.appId);
-const COLLS = ['cases', 'hearings', 'clients', 'fees'];
+const COLLS = ['cases', 'hearings', 'clients', 'fees', 'courts'];
 
 if (!configured) {
   window.Cloud = { configured: false };
@@ -93,9 +93,9 @@ if (!configured) {
     },
 
     /* handlers: onDocs(coll, upserts[], removedIds[], initial), onReady(), onStatus({pending}), onError(err) */
-    subscribe(chamberId, h) {
+    subscribe(chamberId, h, colls = COLLS) {
       const unsubs = [], first = new Set(), server = new Set(), pend = {};
-      for (const c of COLLS) {
+      for (const c of colls) {
         unsubs.push(onSnapshot(collection(db, 'chambers', chamberId, c), { includeMetadataChanges: true }, snap => {
           const up = [], rem = [];
           snap.docChanges().forEach(ch => {
@@ -111,7 +111,7 @@ if (!configured) {
           if (initial || fresh || up.length || rem.length) {
             h.onDocs(c, up, rem, { reconcile: fresh, ids: snap.docs.map(d => d.id) });
           }
-          if (initial && first.size === COLLS.length) h.onReady();
+          if (initial && first.size === colls.length) h.onReady();
           h.onStatus({ pending: Object.values(pend).some(Boolean), fromCache: snap.metadata.fromCache });
         }, err => h.onError(err)));
       }

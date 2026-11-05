@@ -43,9 +43,20 @@ service cloud.firestore {
                       || (signedIn() && request.auth.uid == uid && resource.data.role == 'clerk');
       }
 
-      // মামলা, তারিখের রেকর্ড, মক্কেল, ফি — চেম্বারের সবাই দেখতে ও লিখতে পারবে
+      // মামলা, তারিখের রেকর্ড, মক্কেল — চেম্বারের সবাই (অ্যাডভোকেট ও ক্লার্ক) দেখতে ও লিখতে পারবে
       match /{coll}/{docId} {
-        allow read, write: if coll in ['cases', 'hearings', 'clients', 'fees'] && isMember(cid);
+        allow read, write: if coll in ['cases', 'hearings', 'clients'] && isMember(cid);
+      }
+
+      // ফি-র হিসাব — শুধু অ্যাডভোকেট (ক্লার্ক দেখতে বা লিখতে পারবে না)
+      match /fees/{docId} {
+        allow read, write: if isAdmin(cid);
+      }
+
+      // আদালতের তালিকা — সবাই দেখতে পারবে, বদলাতে পারবে শুধু অ্যাডভোকেট
+      match /courts/{docId} {
+        allow read: if isMember(cid);
+        allow write: if isAdmin(cid);
       }
     }
   }

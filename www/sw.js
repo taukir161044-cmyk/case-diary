@@ -1,6 +1,6 @@
 // অফলাইনে চালানোর জন্য (শুধু ব্রাউজার/PWA ভার্সনে ব্যবহৃত হয়)
-const CACHE = 'case-diary-v2';
-const FILES = ['./', './index.html', './app.css', './app.js', './pdf.js', './cloud.js', './firebase-config.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const CACHE = 'case-diary-v3';
+const FILES = ['./', './index.html', './app.css', './app.js', './pdf.js', './courts-default.js', './cloud.js', './firebase-config.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(FILES.map(f => c.add(f).catch(() => {})))).then(() => self.skipWaiting()));
