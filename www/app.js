@@ -59,14 +59,14 @@ const relChip = s => { if (!s) return ''; const r = rel(s); return `<span class=
 const KEY = 'caseDiary.v1';
 const EMPTY = () => ({
   v: 1, cases: [], hearings: [], clients: [], fees: [], courts: [],
-  settings: { remind: true, evening: '20:00', morning: '07:00', lastBackup: '', askedPerm: false }
+  settings: { remind: true, evening: '20:00', morning: '07:00', lastBackup: '', askedPerm: false, about: { name: 'অ্যাডভোকেট আবু ফাহাদ তাউকির', title: '', enroll: '', address: '', mobile: '', email: '' } }
 });
 const normalize = d => {
   const e = EMPTY();
   return {
     ...e, ...d,
     cases: d.cases || [], hearings: d.hearings || [], clients: d.clients || [], fees: d.fees || [], courts: d.courts || [],
-    settings: { ...e.settings, ...(d.settings || {}) }
+    settings: { ...e.settings, ...(d.settings || {}), about: { ...e.settings.about, ...((d.settings || {}).about || {}) } }
   };
 };
 function load() {
@@ -151,8 +151,8 @@ function addCourts(names) {
 }
 
 const STATUS = { running: 'চলমান', stayed: 'স্থগিত', disposed: 'নিষ্পত্তি' };
-const TYPES = ['দেওয়ানী', 'ফৌজদারী', 'পারিবারিক', 'অন্যান্য'];
-const typeClass = t => ({ 'দেওয়ানী': 't-civil', 'ফৌজদারী': 't-crim', 'পারিবারিক': 't-fam' }[t] || 't-other');
+const TYPES = ['দেওয়ানী', 'ফৌজদারী', 'পারিবারিক', 'দেওয়ানী আপিল', 'দেওয়ানী রিভিশন', 'ফৌজদারী আপিল', 'ফৌজদারী রিভিশন', 'রিভিউ', 'মিস কেস', '১০৭ ধারা', '১৪৫ ধারা', 'অন্যান্য'];
+const typeClass = t => ({ 'দেওয়ানী': 't-civil', 'দেওয়ানী আপিল': 't-civil', 'দেওয়ানী রিভিশন': 't-civil', 'ফৌজদারী': 't-crim', 'ফৌজদারী আপিল': 't-crim', 'ফৌজদারী রিভিশন': 't-crim', '১০৭ ধারা': 't-crim', '১৪৫ ধারা': 't-crim', 'পারিবারিক': 't-fam' }[t] || 't-other');
 const PURPOSES = ['শুনানি', 'সাক্ষ্য', 'জেরা', 'যুক্তিতর্ক', 'আদেশ', 'রায়', 'জবাব দাখিল', 'সমন/নোটিশ জারি', 'আপসের আলোচনা', 'সময়ের আবেদন', 'জামিন শুনানি', 'চার্জ গঠন', 'অন্যান্য'];
 
 /* ======================================================================
@@ -1348,21 +1348,188 @@ let lastRoute = '';
 
 function render() {
   const { name, id } = route();
-  const views = { today: () => vToday(), cases: () => vCases(), case: () => vCase(id), clients: () => vClients(), client: () => vClient(id), fees: () => isClerk() ? vToday() : vFees(), more: () => vMore(), causelist: () => vCauseList(id), courts: () => vCourts() };
+  const views = { today: () => vToday(), cases: () => vCases(), case: () => vCase(id), clients: () => vClients(), client: () => vClient(id), fees: () => isClerk() ? vToday() : vFees(), more: () => vMore(), causelist: () => vCauseList(id), courts: () => vCourts(), faraiz: () => vFaraiz(), hindu: () => vHindu(), about: () => vAbout() };
   if (!views[name]) { location.replace('#/today'); return; }
   const r = views[name]();
   const bar = $('.appbar');
-  bar.innerHTML = `<div class="left">${r.back ? `<button class="back" data-action="back" data-to="${r.back}" aria-label="পেছনে">‹</button>` : ''}<h1>${esc(r.title)}</h1></div><div>${r.actions || ''}${syncChipHTML()}</div>`;
+  bar.innerHTML = `<div class="left">${r.back ? `<button class="back" data-action="back" data-to="${r.back}" aria-label="পেছনে">‹</button>` : `<button class="back menu" data-action="menu" aria-label="মেনু">☰</button>`}<h1>${esc(r.title)}</h1></div><div>${r.actions || ''}${syncChipHTML()}</div>`;
   $('#view').innerHTML = r.html;
   const fab = $('#fab');
   if (r.fab) { fab.hidden = false; fab.dataset.action = r.fab.action; fab.setAttribute('aria-label', r.fab.label); } else fab.hidden = true;
-  const tab = { case: 'cases', client: 'clients', causelist: 'today', courts: 'more' }[name] || name;
+  const tab = { case: 'cases', client: 'clients', causelist: 'today', courts: 'more', faraiz: 'more', hindu: 'more', about: 'more' }[name] || name;
   const feeTab = document.querySelector('#tabs a[data-tab=fees]'); if (feeTab) feeTab.hidden = isClerk();
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   const key = name + '/' + (id || '');
   if (key !== lastRoute) { window.scrollTo(0, 0); lastRoute = key; }
   if (r.after) r.after();
 }
+
+/* ======================================================================
+   বাম পাশের মেনু, উত্তরাধিকার হিসাব (মুসলিম/হিন্দু), আমার পরিচয়
+   ====================================================================== */
+function openDrawer() {
+  let d = $('#drawer');
+  if (!d) { d = document.createElement('div'); d.id = 'drawer'; d.className = 'drawer'; document.body.appendChild(d); }
+  const here = route().name;
+  const item = (href, ico, t, sub = '') => `<a class="d-item ${here === href.slice(2) ? 'on' : ''}" href="${href}" data-action="close-drawer"><span class="d-ico">${ico}</span><span><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span></a>`;
+  d.innerHTML = `<div class="d-back" data-action="close-drawer"></div><aside class="d-panel">
+    <div class="d-head"><div class="d-title">কেস ডায়েরি</div><div class="small">${esc(db.settings.about.name || '')}</div></div>
+    <div class="d-sec">উত্তরাধিকার হিসাব</div>
+    ${item('#/faraiz', '☪', 'মুসলিম ফারায়েজ', 'হানাফী মত — ওয়ারিসদের অংশ')}
+    ${item('#/hindu', 'ॐ', 'হিন্দু উত্তরাধিকার', 'দায়ভাগা — পুরুষের সম্পত্তি')}
+    <div class="d-sec">অ্যাপ</div>
+    ${item('#/today', '📅', 'আজ')}
+    ${item('#/cases', '📁', 'মামলা')}
+    ${item('#/clients', '👥', 'মক্কেল')}
+    ${isClerk() ? '' : item('#/fees', '💰', 'ফি ও হিসাব')}
+    ${item('#/courts', '🏛', 'আদালতের তালিকা')}
+    ${item('#/more', '⚙', 'আরও (ব্যাকআপ, রিমাইন্ডার)')}
+    ${item('#/about', 'ℹ', 'আমার পরিচয় (About)')}
+  </aside>`;
+  d.hidden = false; requestAnimationFrame(() => d.classList.add('open'));
+}
+function closeDrawer() { const d = $('#drawer'); if (!d) return; d.classList.remove('open'); setTimeout(() => { d.hidden = true; }, 180); }
+
+/* ---- আমার পরিচয় ---- */
+function aboutText() {
+  const a = db.settings.about;
+  return [a.name, a.title, a.enroll && 'এনরোলমেন্ট: ' + a.enroll, a.address && 'ঠিকানা: ' + a.address, a.mobile && 'মোবাইল: ' + a.mobile, a.email && 'ইমেইল: ' + a.email].filter(Boolean).join('\n');
+}
+function vAbout() {
+  const a = db.settings.about;
+  const row = (l, v, link) => v ? `<div class="ab-row"><span>${l}</span>${link ? `<a href="${link}">${esc(v)}</a>` : `<b>${esc(v)}</b>`}</div>` : '';
+  const html = `<div class="card about">
+      <div class="ab-av">⚖</div>
+      <div class="ab-name">${esc(a.name || 'নাম লেখা হয়নি')}</div>
+      ${a.title ? `<div class="muted">${esc(a.title)}</div>` : ''}
+      ${row('এনরোলমেন্ট', a.enroll)}${row('ঠিকানা', a.address)}${row('মোবাইল', a.mobile, a.mobile ? 'tel:' + a.mobile.replace(/[^\d+]/g, '') : '')}${row('ইমেইল', a.email, a.email ? 'mailto:' + a.email : '')}
+      ${!a.address && !a.mobile && !a.email ? '<div class="small muted mt">ঠিকানা, মোবাইল, ইমেইল এখনো লেখা হয়নি। নিচের বোতামে চেপে লিখুন।</div>' : ''}
+      <div class="row mt"><button class="btn primary grow" data-action="edit-about">তথ্য বদলান</button><button class="btn grow" data-action="share-about">শেয়ার</button></div>
+    </div>
+    <div class="card"><div class="strong">কেস ডায়েরি v2.2</div><div class="small muted">App built by Adv Abu Fahad Taukir</div></div>`;
+  return { title: 'আমার পরিচয়', html, back: '#/today' };
+}
+function aboutForm() {
+  const a = db.settings.about;
+  openSheet('আমার পরিচয়', `
+    ${field('নাম', `<input name="name" value="${esc(a.name)}">`)}
+    ${field('পদবি / পরিচয় (ঐচ্ছিক)', `<input name="title" value="${esc(a.title)}" placeholder="যেমন: আইনজীবী, জেলা ও দায়রা জজ আদালত, জামালপুর">`)}
+    ${field('এনরোলমেন্ট নম্বর (ঐচ্ছিক)', `<input name="enroll" value="${esc(a.enroll)}">`)}
+    ${field('ঠিকানা', `<textarea name="address" style="min-height:70px">${esc(a.address)}</textarea>`)}
+    ${field('মোবাইল', `<input name="mobile" type="tel" value="${esc(a.mobile)}">`)}
+    ${field('ইমেইল (Gmail)', `<input name="email" type="email" value="${esc(a.email)}">`)}`,
+    (fd, f) => {
+      const v = n => (f.elements[n].value || '').trim();
+      db.settings.about = { name: v('name'), title: v('title'), enroll: v('enroll'), address: v('address'), mobile: v('mobile'), email: v('email') };
+      save(); closeSheet(); render(); toast('সংরক্ষিত হয়েছে');
+    });
+}
+
+/* ---- উত্তরাধিকার ---- */
+const inh = {
+  mus: { sex: 'm', wives: 0, husband: 0, son: 0, dau: 0, ss: 0, sd: 0, father: 0, mother: 0, gf: 0, pgm: 0, mgm: 0, fb: 0, fs: 0, cb: 0, cs: 0, ub: 0, us: 0 },
+  hin: { widows: 0, sons: 0, daughters: 0, dsons: 0, father: 0, mother: 0, brothers: 0, deadLines: [] },
+  est: { total: '', funeral: '', debts: '', will: '' }
+};
+const MUS_FIELDS = [
+  ['son', 'পুত্র', 99], ['dau', 'কন্যা', 99], ['ss', 'পুত্রের পুত্র (নাতি)', 99], ['sd', 'পুত্রের কন্যা (নাতনি)', 99],
+  ['father', 'পিতা', 1], ['mother', 'মাতা', 1], ['gf', 'দাদা (পিতার পিতা)', 1], ['pgm', 'দাদি (পিতার মা)', 1], ['mgm', 'নানি (মাতার মা)', 1],
+  ['fb', 'সহোদর ভাই', 99], ['fs', 'সহোদর বোন', 99], ['cb', 'বৈমাত্রেয় ভাই (বাবা এক)', 99], ['cs', 'বৈমাত্রেয় বোন (বাবা এক)', 99],
+  ['ub', 'বৈপিত্রেয় ভাই (মা এক)', 99], ['us', 'বৈপিত্রেয় বোন (মা এক)', 99]
+];
+const stepper = (grp, key, label, max, val) => `<div class="stp"><span>${label}</span><div class="stp-c"><button type="button" data-step="${grp}.${key}" data-d="-1" ${val <= 0 ? 'disabled' : ''}>−</button><b>${bn(val)}</b><button type="button" data-step="${grp}.${key}" data-d="1" ${val >= max ? 'disabled' : ''}>＋</button></div></div>`;
+const num = v => Math.max(0, parseFloat(String(v).replace(/[,\s]/g, '').replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d))) || 0);
+function estateHTML() {
+  return `<div class="card"><div class="strong">সম্পত্তির মূল্য (ঐচ্ছিক)</div><div class="small muted">টাকা লিখলে প্রত্যেকের টাকার অংকও দেখাবে</div>
+    <div class="grid2 mt">
+      <label class="field"><span>মোট সম্পত্তি (৳)</span><input id="eTotal" inputmode="decimal" value="${esc(inh.est.total)}"></label>
+      <label class="field"><span>দাফন/সৎকার খরচ</span><input id="eFuneral" inputmode="decimal" value="${esc(inh.est.funeral)}"></label>
+      <label class="field"><span>ঋণ/দেনমোহর</span><input id="eDebts" inputmode="decimal" value="${esc(inh.est.debts)}"></label>
+      <label class="field"><span>উইল/ওসিয়ত</span><input id="eWill" inputmode="decimal" value="${esc(inh.est.will)}"></label>
+    </div><div class="small muted">মুসলিম আইনে ওসিয়ত সর্বোচ্চ ঋণ-খরচ বাদে সম্পত্তির ১/৩ পর্যন্ত কার্যকর (ওয়ারিসদের সম্মতি ছাড়া)।</div></div>`;
+}
+function estateNet(muslim) {
+  const t = num(inh.est.total), fu = num(inh.est.funeral), de = num(inh.est.debts); let wi = num(inh.est.will);
+  const after = Math.max(0, t - fu - de);
+  if (muslim) wi = Math.min(wi, after / 3);
+  return { total: t, funeral: fu, debts: de, will: wi, net: Math.max(0, after - wi) };
+}
+const pct = v => bn((v * 100).toFixed(2).replace(/\.?0+$/, ''));
+function resultHTML(res, muslim, title) {
+  const e = estateNet(muslim), has = e.total > 0, I = window.Inherit;
+  const rows = res.rows.map(r => {
+    const v = I.val(r.total), each = I.val(r.each);
+    return `<div class="rs-row"><div class="rs-top"><div><b>${esc(r.label)}</b>${r.count > 1 ? ` <span class="muted">(${bn(r.count)} জন)</span>` : ''}</div><div class="rs-frac">${I.fracStr(r.total)}</div></div>
+      <div class="small muted">${esc(r.why || '')}</div>
+      <div class="rs-bar"><i style="width:${Math.min(100, v * 100)}%"></i></div>
+      <div class="small">${pct(v)}%${has ? ` · <b>${money(Math.round(v * e.net))}</b>` : ''}${r.count > 1 ? ` · প্রত্যেকে ${I.fracStr(r.each)} (${pct(each)}%)${has ? ' = <b>' + money(Math.round(each * e.net)) + '</b>' : ''}` : ''}</div></div>`;
+  }).join('');
+  let text = `${title}\n`;
+  if (has) text += `মোট সম্পত্তি: ${money(e.total)}${e.funeral ? `, খরচ: ${money(e.funeral)}` : ''}${e.debts ? `, ঋণ: ${money(e.debts)}` : ''}${e.will ? `, উইল: ${money(Math.round(e.will))}` : ''}\nবণ্টনযোগ্য: ${money(Math.round(e.net))}\n`;
+  text += '\n' + res.rows.map(r => `• ${r.label}${r.count > 1 ? ` (${bn(r.count)} জন)` : ''}: ${I.fracStr(r.total)} (${pct(I.val(r.total))}%)${has ? ' = ' + money(Math.round(I.val(r.total) * e.net)) : ''}${r.count > 1 ? `; প্রত্যেকে ${I.fracStr(r.each)}${has ? ' = ' + money(Math.round(I.val(r.each) * e.net)) : ''}` : ''}`).join('\n');
+  if (res.notes.length) text += '\n\nমন্তব্য:\n' + res.notes.map(n => '- ' + n).join('\n');
+  text += '\n\n(সহায়ক হিসাব; চূড়ান্ত সিদ্ধান্তের আগে আইনগত যাচাই করুন) — কেস ডায়েরি';
+  return (res.rows.length ? `${has ? `<div class="card"><div class="small muted">বণ্টনযোগ্য সম্পত্তি</div><div class="amt-big">${money(Math.round(e.net))}</div>${e.will ? `<div class="small muted">ওসিয়ত ${money(Math.round(e.will))} আগেই বাদ</div>` : ''}</div>` : ''}<div class="card">${rows}</div>` : '<div class="empty"><b>ওয়ারিস বাছুন</b>উপরে থেকে যাদের আছে তাদের সংখ্যা দিন।</div>')
+    + (res.notes.length ? `<div class="card note">${res.notes.map(n => `<div class="small">• ${esc(n)}</div>`).join('')}</div>` : '')
+    + (res.rows.length ? `<textarea id="inhText" hidden>${esc(text)}</textarea><button class="btn primary block" data-action="share-inherit" data-title="${esc(title)}">ফলাফল শেয়ার করুন</button>` : '');
+}
+const DISCLAIMER = '<div class="small muted mt" style="text-align:center">সহায়ক হিসাব মাত্র। জটিল ক্ষেত্রে (দূরবর্তী ওয়ারিস, মৃত ওয়ারিসের সন্তান ইত্যাদি) আইনগত যাচাই করুন।</div>';
+function musFormHTML() {
+  const m = inh.mus, spouse = m.sex === 'm' ? stepper('mus', 'wives', 'স্ত্রী (সংখ্যা)', 4, m.wives) : stepper('mus', 'husband', 'স্বামী', 1, m.husband);
+  return `<div class="seg2"><button data-sex="m" class="${m.sex === 'm' ? 'on' : ''}">মৃত ব্যক্তি পুরুষ</button><button data-sex="f" class="${m.sex === 'f' ? 'on' : ''}">মৃত ব্যক্তি মহিলা</button></div>
+    <div class="card">${spouse}${MUS_FIELDS.map(([k, l, mx]) => stepper('mus', k, l, mx, m[k])).join('')}</div>`;
+}
+function hinFormHTML() {
+  const h = inh.hin;
+  const lines = h.deadLines.map((n, i) => stepper('line', i, `${bn(i + 1)} নং মৃত পুত্রের পুত্র সংখ্যা`, 99, n)).join('');
+  return `<div class="card">
+    ${stepper('hin', 'widows', 'বিধবা স্ত্রী (সংখ্যা)', 9, h.widows)}
+    ${stepper('hin', 'sons', 'জীবিত পুত্র', 99, h.sons)}
+    ${lines}
+    <button class="btn small mt" data-step="line.add" type="button">＋ মৃত পুত্রের শাখা যোগ (তার পুত্রসহ)</button>
+    ${h.deadLines.length ? '<button class="btn small mt" data-step="line.del" type="button">− শেষ শাখা বাদ</button>' : ''}
+    ${stepper('hin', 'daughters', 'কন্যা', 99, h.daughters)}
+    ${stepper('hin', 'dsons', 'কন্যার পুত্র', 99, h.dsons)}
+    ${stepper('hin', 'father', 'পিতা', 1, h.father)}
+    ${stepper('hin', 'mother', 'মাতা', 1, h.mother)}
+    ${stepper('hin', 'brothers', 'ভাই', 99, h.brothers)}</div>`;
+}
+function inheritView(kind) {
+  const muslim = kind === 'mus', title = muslim ? 'মুসলিম ফারায়েজ' : 'হিন্দু উত্তরাধিকার';
+  const intro = muslim ? 'হানাফী মত (বাংলাদেশে প্রযোজ্য)। যে ওয়ারিসরা জীবিত আছেন শুধু তাদের সংখ্যা দিন।' : 'দায়ভাগা মত (বাংলাদেশ); মৃত পুরুষের সম্পত্তি। হিন্দু নারীর সম্পত্তির অধিকার আইন ১৯৩৭ ধরা হয়েছে। মৃত নারীর স্ত্রীধন এই হিসাবে নেই।';
+  const html = `<div class="card note"><div class="small">${intro}</div></div><div id="inhForm">${muslim ? musFormHTML() : hinFormHTML()}</div>${estateHTML()}<div id="inhRes"></div>${DISCLAIMER}`;
+  const draw = () => {
+    const res = muslim ? Inherit.muslim(inh.mus) : Inherit.hindu(inh.hin);
+    const t = muslim ? 'মুসলিম ফারায়েজ হিসাব' : 'হিন্দু উত্তরাধিকার হিসাব';
+    $('#inhRes').innerHTML = resultHTML(res, muslim, t);
+  };
+  return {
+    title, html, back: '#/today',
+    after() {
+      draw();
+      const form = $('#inhForm');
+      form.onclick = e => {
+        const sx = e.target.closest('[data-sex]');
+        if (sx) { inh.mus.sex = sx.dataset.sex; if (sx.dataset.sex === 'm') inh.mus.husband = 0; else inh.mus.wives = 0; form.innerHTML = musFormHTML(); draw(); return; }
+        const b = e.target.closest('[data-step]'); if (!b) return;
+        const [grp, key] = b.dataset.step.split('.'), d = +b.dataset.d || 0;
+        if (grp === 'line') {
+          const L = inh.hin.deadLines;
+          if (key === 'add') L.push(1); else if (key === 'del') L.pop(); else L[+key] = Math.max(0, Math.min(99, (L[+key] || 0) + d));
+          form.innerHTML = hinFormHTML(); draw(); return;
+        }
+        const o = grp === 'mus' ? inh.mus : inh.hin;
+        const mx = muslim ? (MUS_FIELDS.find(f => f[0] === key) || [0, 0, key === 'wives' ? 4 : 1])[2] : (key === 'widows' ? 9 : ['father', 'mother'].includes(key) ? 1 : 99);
+        o[key] = Math.max(0, Math.min(mx, (o[key] || 0) + d));
+        form.innerHTML = muslim ? musFormHTML() : hinFormHTML(); draw();
+      };
+      [['eTotal', 'total'], ['eFuneral', 'funeral'], ['eDebts', 'debts'], ['eWill', 'will']].forEach(([id, k]) => $('#' + id).addEventListener('input', e => { inh.est[k] = e.target.value; draw(); }));
+    }
+  };
+}
+const vFaraiz = () => inheritView('mus');
+const vHindu = () => inheritView('hin');
+
 window.addEventListener('hashchange', render);
 
 /* ======================================================================
@@ -1376,6 +1543,11 @@ document.addEventListener('click', async e => {
   switch (a) {
     case 'back': if (history.length > 1) history.back(); else location.hash = el.dataset.to || '#/today'; break;
     case 'close-sheet': closeSheet(); break;
+    case 'menu': openDrawer(); break;
+    case 'close-drawer': closeDrawer(); break;
+    case 'edit-about': aboutForm(); break;
+    case 'share-about': shareText('আমার পরিচয়', aboutText()); break;
+    case 'share-inherit': shareText(el.dataset.title, $('#inhText').value); break;
     case 'new-case': caseForm(); break;
     case 'edit-case': caseForm(id); break;
     case 'new-client': clientForm(); break;
