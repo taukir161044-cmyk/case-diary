@@ -169,40 +169,61 @@
     return div(o.total, F(o.count));
   }
 
-  /* ---------------- হিন্দু (দায়ভাগা; পুরুষের সম্পত্তি) ---------------- */
-  // h: {widows, sons, deadLines:[গ্রান্ডসন সংখ্যা...], daughters, dsons (কন্যার পুত্র), father, mother, brothers}
+  /* ---------------- হিন্দু (দায়ভাগা; মৃত পুরুষের সম্পত্তি) ---------------- */
+  // h: {sons, branches:[{gs,ggs}], widows, daughters, dsons, father, mother, brothers, bsons, bgsons, ssons, pgf, pgm, uncles, usons}
+  // অগ্রাধিকার: (১) পুত্র/পৌত্র/প্রপৌত্র (সাথে বিধবা, ১৯৩৭ আইন) → বিধবা → কন্যা → কন্যার পুত্র → পিতা → মাতা → ভাই → ভাইয়ের পুত্র
+  //   → ভাইয়ের পুত্রের পুত্র → বোনের পুত্র → পিতামহ → পিতামহী → পিতৃব্য → পিতৃব্যের পুত্র। প্রথম যে স্তরে কেউ আছে সেই স্তরই সব পায়।
   function hindu(h) {
     const g = k => Math.max(0, Math.floor(+h[k] || 0));
-    const widows = g('widows'), sons = g('sons'), daughters = g('daughters'), dsons = g('dsons');
-    const father = Math.min(1, g('father')), mother = Math.min(1, g('mother')), brothers = g('brothers');
-    const lines = (h.deadLines || []).map(x => Math.max(0, Math.floor(+x || 0))).filter(x => x > 0);
+    const sons = g('sons'), widows = g('widows');
+    const br = (h.branches || []).map(x => ({ gs: Math.max(0, Math.floor(+x.gs || 0)), ggs: Math.max(0, Math.floor(+x.ggs || 0)) })).filter(x => x.gs + x.ggs > 0);
     const out = [], notes = [];
     const push = (key, label, count, total, why) => out.push({ key, label, count, total, each: count > 1 ? div(total, F(count)) : total, why });
-    const units = sons + lines.length;
+    const units = sons + br.length;
     if (units > 0) {
-      const all = units + (widows ? 1 : 0);
-      const u = F(1, all);
+      const u = F(1, units + (widows ? 1 : 0));
       if (sons) push('sons', sons > 1 ? 'পুত্রগণ' : 'পুত্র', sons, mul(u, F(sons)), 'প্রত্যেক পুত্র সমান অংশ');
-      lines.forEach((n, i) => push('line' + i, `মৃত পুত্রের ${bnl(n)} জন পুত্র (${bnl(i + 1)} নং শাখা)`, n, u, 'মৃত পুত্রের অংশ তার পুত্ররা সমান ভাগে পায় (শাখা অনুযায়ী)'));
-      if (widows) push('widows', widows > 1 ? 'বিধবাগণ' : 'বিধবা স্ত্রী', widows, u, 'হিন্দু নারীর সম্পত্তির অধিকার আইন ১৯৩৭: বিধবা একজন পুত্রের সমান অংশ পায় (একাধিক বিধবা হলে ঐ অংশ সমান ভাগ)');
-      if (daughters) notes.push('পুত্র/পুত্রের শাখা থাকলে কন্যা দায়ভাগা অনুযায়ী উত্তরাধিকারী নন (বিয়ের সময় প্রাপ্ত স্ত্রীধন/দান আলাদা)।');
-      if (widows) notes.push('বিধবার অংশ সাধারণত "বিধবার সম্পত্তি" হিসেবে জীবনস্বত্ব (limited estate); তার মৃত্যুর পর স্বামীর উত্তরাধিকারীদের কাছে ফেরে। কিছু ক্ষেত্রে তিনি বিভাজন দাবি করতে পারেন।');
-    } else if (widows) {
-      push('widows', widows > 1 ? 'বিধবাগণ' : 'বিধবা স্ত্রী', widows, ONE, 'পুত্র/পৌত্র না থাকায় বিধবা পুরো সম্পত্তি পায় (সমান ভাগ)');
+      br.forEach((x, i) => {
+        if (x.gs) push('br' + i, `মৃত পুত্রের শাখা ${bnl(i + 1)}: পুত্রের পুত্র`, x.gs, u, 'মৃত পুত্রের অংশ তার পুত্ররা সমান ভাগে পায় (শাখা অনুযায়ী)');
+        else push('br' + i, `মৃত পুত্রের শাখা ${bnl(i + 1)}: পুত্রের পুত্রের পুত্র`, x.ggs, u, 'পুত্র ও তার পুত্র না থাকায় প্রপৌত্ররা সেই শাখার অংশ সমান ভাগে পায়');
+      });
+      if (widows) push('widows', widows > 1 ? 'বিধবাগণ' : 'স্ত্রী / বিধবা', widows, u, 'হিন্দু নারীর সম্পত্তির অধিকার আইন ১৯৩৭: বিধবা একজন পুত্রের সমান অংশ পায় (একাধিক হলে ঐ অংশ সমান ভাগ)');
+      if (g('daughters') + g('dsons') + g('father') + g('mother') + g('brothers') > 0) notes.push('পুত্র/পৌত্র/প্রপৌত্র থাকলে কন্যা, পিতা-মাতা, ভাই প্রমুখ দায়ভাগা অনুযায়ী উত্তরাধিকারী নন।');
+      if (widows) notes.push('বিধবার অংশ সাধারণত জীবনস্বত্ব (limited estate); তার মৃত্যুর পর স্বামীর উত্তরাধিকারীদের কাছে ফেরে।');
+      return { rows: out, notes, total: out.reduce((a, o) => add(a, o.total), ZERO) };
+    }
+    if (widows) {
+      push('widows', widows > 1 ? 'বিধবাগণ' : 'স্ত্রী / বিধবা', widows, ONE, 'পুত্র/পৌত্র/প্রপৌত্র না থাকায় বিধবা পুরো সম্পত্তি পায় (একাধিক হলে সমান ভাগ)');
       notes.push('বিধবা জীবনস্বত্ব (limited estate) পান; তার মৃত্যুর পর কন্যা প্রভৃতি পরবর্তী উত্তরাধিকারীরা পায়।');
-    } else if (daughters) {
-      push('daughters', daughters > 1 ? 'কন্যাগণ' : 'কন্যা', daughters, ONE, 'পুত্র-পৌত্র-বিধবা না থাকলে কন্যারা সমান ভাগে পায়');
-      notes.push('দায়ভাগায় কন্যা উত্তরাধিকারী হতে সাধারণত শর্ত আছে: পুত্রসন্তান আছে বা হওয়ার সম্ভাবনা আছে (বিধবা/বন্ধ্যা/পুত্রহীন কন্যা বাদ যেতে পারে)। এই শর্ত আপনি আলাদাভাবে যাচাই করুন।');
-    } else if (dsons) {
-      push('dsons', 'কন্যার পুত্রগণ', dsons, ONE, 'কন্যার পুত্ররা সমান ভাগে পায়');
-    } else if (father) {
-      push('father', 'পিতা', 1, ONE, 'উপরের শ্রেণি না থাকলে পিতা');
-    } else if (mother) {
-      push('mother', 'মাতা', 1, ONE, 'পিতা না থাকলে মাতা');
-    } else if (brothers) {
-      push('brothers', brothers > 1 ? 'ভাইগণ' : 'ভাই', brothers, ONE, 'ভাইরা সমান ভাগে পায়');
-    } else notes.push('এই হিসাব-যন্ত্রে ধরা ওয়ারিস কেউ নেই। আরও দূরের সপিণ্ড/সকুল্য/সমানোদক ইত্যাদির জন্য আইনজীবীর পরামর্শ নিন।');
-    return { rows: out, notes, total: out.reduce((a, o) => add(a, o.total), ZERO) };
+      return { rows: out, notes, total: ONE };
+    }
+    const TIERS = [
+      ['daughters', 'কন্যা', 'কন্যাগণ', 'পুত্র-বিধবা না থাকায় কন্যারা সমান ভাগে পায়'],
+      ['dsons', 'কন্যার পুত্র', 'কন্যার পুত্রগণ', 'কন্যা না থাকায় কন্যার পুত্ররা সমান ভাগে পায়'],
+      ['father', 'পিতা', 'পিতা', 'উপরের কেউ না থাকায় পিতা'],
+      ['mother', 'মাতা', 'মাতা', 'পিতা না থাকায় মাতা'],
+      ['brothers', 'ভাই', 'ভাইগণ', 'উপরের কেউ না থাকায় ভাইয়েরা সমান ভাগে পায়'],
+      ['bsons', 'ভাইয়ের পুত্র', 'ভাইয়ের পুত্রগণ', 'ভাই না থাকায় ভাইয়ের পুত্ররা'],
+      ['bgsons', 'ভাইয়ের পুত্রের পুত্র', 'ভাইয়ের পুত্রের পুত্রগণ', 'ভাইয়ের পুত্র না থাকায়'],
+      ['ssons', 'বোনের পুত্র', 'বোনের পুত্রগণ', 'উপরের কেউ না থাকায় বোনের পুত্ররা'],
+      ['pgf', 'পিতামহ (দাদা)', 'পিতামহ (দাদা)', 'উপরের কেউ না থাকায় পিতামহ'],
+      ['pgm', 'পিতামহী (দাদি)', 'পিতামহী (দাদি)', 'পিতামহ না থাকায় পিতামহী'],
+      ['uncles', 'পিতৃব্য (কাকা/চাচা)', 'পিতৃব্যগণ (কাকা/চাচা)', 'উপরের কেউ না থাকায় পিতৃব্যরা সমান ভাগে'],
+      ['usons', 'পিতৃব্যের পুত্র', 'পিতৃব্যের পুত্রগণ', 'পিতৃব্য না থাকায় তার পুত্ররা']
+    ];
+    for (const [k, one, many, why] of TIERS) {
+      const n = g(k);
+      if (n > 0) {
+        push(k, n > 1 ? many : one, n, ONE, why);
+        if (k === 'daughters') notes.push('দায়ভাগায় কন্যা উত্তরাধিকারী হতে সাধারণত শর্ত আছে: পুত্রসন্তান আছে বা হওয়ার সম্ভাবনা আছে (বিধবা/নিঃসন্তান/বন্ধ্যা কন্যা বাদ যেতে পারে)। এই শর্ত আলাদাভাবে যাচাই করুন।');
+        if (['brothers', 'bsons', 'bgsons', 'ssons', 'uncles', 'usons'].includes(k)) notes.push('একই স্তরে সবাইকে মাথাপিছু সমান ধরা হয়েছে। মৃত ভাই/কাকার শাখা থাকলে শাখা অনুযায়ী ভাগ আলাদা যাচাই করুন।');
+        const lower = TIERS.slice(TIERS.findIndex(t => t[0] === k) + 1).some(t => g(t[0]) > 0);
+        if (lower) notes.push('নিচের স্তরের অন্য ওয়ারিসরা (যেমন দূরের আত্মীয়) এই স্তর থাকায় কিছু পাননি।');
+        return { rows: out, notes, total: ONE };
+      }
+    }
+    notes.push('ওয়ারিস বাছুন। এই তালিকার বাইরের আরও দূরের সপিণ্ড/সকুল্য/সমানোদক ইত্যাদির জন্য আইনজীবীর পরামর্শ নিন।');
+    return { rows: out, notes, total: ZERO };
   }
   const bnl = v => String(v).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[+d]);
   const fracStr = f => (f.d === 1 ? bnl(f.n) : bnl(f.n) + '/' + bnl(f.d));

@@ -376,3 +376,9 @@ details summary::-webkit-details-marker { display: none; }
 .col-end { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .dialog .box .btns a.btn { flex: 1; }
+
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 10px; }
+.grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0 6px; }
+.grid5 .field input, .grid3 .field input { padding-left: 8px; padding-right: 8px; min-width: 0; }
+.branch { background: var(--bg); border-radius: 12px; padding: 8px 12px; margin-top: 8px; }
+.cs-res { margin-top: 6px; }
