@@ -1515,7 +1515,7 @@ function vAbout() {
 const inh = {
   mus: { sex: 'm', wives: 0, husband: 0, son: 0, dau: 0, ss: 0, sd: 0, father: 0, mother: 0, gf: 0, pgm: 0, mgm: 0, fb: 0, fs: 0, cb: 0, cs: 0, ub: 0, us: 0 },
   hin: { widows: 0, sons: 0, daughters: 0, dsons: 0, father: 0, mother: 0, brothers: 0, deadLines: [] },
-  est: { total: '', funeral: '', debts: '', will: '' }
+  est: { total: '', funeral: '', debts: '', will: '', acre: '', bigha: '', katha: '', chhatak: '', dec: '', lwill: '' }
 };
 const MUS_FIELDS = [
   ['son', 'পুত্র', 99], ['dau', 'কন্যা', 99], ['ss', 'পুত্রের পুত্র (নাতি)', 99], ['sd', 'পুত্রের কন্যা (নাতনি)', 99],
@@ -1526,36 +1526,72 @@ const MUS_FIELDS = [
 const stepper = (grp, key, label, max, val) => `<div class="stp"><span>${label}</span><div class="stp-c"><button type="button" data-step="${grp}.${key}" data-d="-1" ${val <= 0 ? 'disabled' : ''}>−</button><b>${bn(val)}</b><button type="button" data-step="${grp}.${key}" data-d="1" ${val >= max ? 'disabled' : ''}>＋</button></div></div>`;
 const num = v => Math.max(0, parseFloat(String(v).replace(/[,\s]/g, '').replace(/[০-৯]/g, d => '০১২৩৪৫৬৭৮৯'.indexOf(d))) || 0);
 function estateHTML() {
-  return `<div class="card"><div class="strong">সম্পত্তির মূল্য (ঐচ্ছিক)</div><div class="small muted">টাকা লিখলে প্রত্যেকের টাকার অংকও দেখাবে</div>
+  return `<div class="card"><div class="strong">💰 টাকা-পয়সা (ঐচ্ছিক)</div><div class="small muted">টাকা লিখলে প্রত্যেকের টাকার অংকও দেখাবে</div>
     <div class="grid2 mt">
-      <label class="field"><span>মোট সম্পত্তি (৳)</span><input id="eTotal" inputmode="decimal" value="${esc(inh.est.total)}"></label>
+      <label class="field"><span>মোট টাকা (৳)</span><input id="eTotal" inputmode="decimal" value="${esc(inh.est.total)}"></label>
       <label class="field"><span>দাফন/সৎকার খরচ</span><input id="eFuneral" inputmode="decimal" value="${esc(inh.est.funeral)}"></label>
       <label class="field"><span>ঋণ/দেনমোহর</span><input id="eDebts" inputmode="decimal" value="${esc(inh.est.debts)}"></label>
-      <label class="field"><span>উইল/ওসিয়ত</span><input id="eWill" inputmode="decimal" value="${esc(inh.est.will)}"></label>
-    </div><div class="small muted">মুসলিম আইনে ওসিয়ত সর্বোচ্চ ঋণ-খরচ বাদে সম্পত্তির ১/৩ পর্যন্ত কার্যকর (ওয়ারিসদের সম্মতি ছাড়া)।</div></div>`;
+      <label class="field"><span>উইল/ওসিয়ত (টাকা)</span><input id="eWill" inputmode="decimal" value="${esc(inh.est.will)}"></label>
+    </div></div>
+    <div class="card"><div class="strong">🌾 ভূমি / জমি (ঐচ্ছিক)</div><div class="small muted">যে এককে আছে সেটিতেই লিখুন (সব ঘর যোগ হবে)। ধরা হয়েছে: ১ একর = ১০০ শতাংশ, ১ বিঘা = ৩৩ শতাংশ, ১ কাঠা = ১.৬৫ শতাংশ (২০ কাঠা = ১ বিঘা), ১ ছটাক = ১/১৬ কাঠা। অঞ্চলভেদে বিঘা ভিন্ন হতে পারে। এছাড়া প্রত্যেকের অংশ সিএস হিসাবে (আনা-গণ্ডা-কড়া-ক্রান্তি-তিল) সব সময় দেখানো হয়।</div>
+    <div class="grid2 mt">
+      <label class="field"><span>একর</span><input id="eAcre" inputmode="decimal" value="${esc(inh.est.acre)}"></label>
+      <label class="field"><span>শতাংশ</span><input id="eDec" inputmode="decimal" value="${esc(inh.est.dec)}"></label>
+      <label class="field"><span>বিঘা</span><input id="eBigha" inputmode="decimal" value="${esc(inh.est.bigha)}"></label>
+      <label class="field"><span>কাঠা</span><input id="eKatha" inputmode="decimal" value="${esc(inh.est.katha)}"></label>
+      <label class="field"><span>ছটাক</span><input id="eChhatak" inputmode="decimal" value="${esc(inh.est.chhatak)}"></label>
+    </div>
+    <label class="field"><span>উইল/ওসিয়তকৃত জমি (শতাংশ, ঐচ্ছিক)</span><input id="eLWill" inputmode="decimal" value="${esc(inh.est.lwill)}"></label>
+    <div class="small muted">মুসলিম আইনে ওসিয়ত সর্বোচ্চ ঋণ-খরচ বাদে সম্পত্তির ১/৩ পর্যন্ত কার্যকর (ওয়ারিসদের সম্মতি ছাড়া)।</div></div>`;
 }
 function estateNet(muslim) {
   const t = num(inh.est.total), fu = num(inh.est.funeral), de = num(inh.est.debts); let wi = num(inh.est.will);
   const after = Math.max(0, t - fu - de);
   if (muslim) wi = Math.min(wi, after / 3);
-  return { total: t, funeral: fu, debts: de, will: wi, net: Math.max(0, after - wi) };
+  const land = num(inh.est.acre) * 100 + num(inh.est.bigha) * 33 + num(inh.est.katha) * 1.65 + num(inh.est.chhatak) * 1.65 / 16 + num(inh.est.dec); let lw = num(inh.est.lwill);
+  if (muslim) lw = Math.min(lw, land / 3);
+  return { total: t, funeral: fu, debts: de, will: wi, net: Math.max(0, after - wi), land, lwill: lw, landNet: Math.max(0, land - lw) };
+}
+// শতাংশ → "২ একর ৩৫.৫ শতাংশ"
+function landStr(sh) {
+  sh = Math.round(sh * 100) / 100;
+  const ac = Math.floor(sh / 100 + 1e-9), r = Math.round((sh - ac * 100) * 100) / 100;
+  const rs = bn(String(r));
+  return (ac ? bn(ac) + ' একর ' : '') + (r || !ac ? rs + ' শতাংশ' : '').trim();
+}
+// বিঘা-কাঠা-ছটাক (১ বিঘা=৩৩ শতাংশ, ১ কাঠা=১.৬৫ শতাংশ) ও বর্গফুট
+function landStr2(sh) {
+  const ch = Math.round(sh / (1.65 / 16)); const bi = Math.floor(ch / 320), ka = Math.floor((ch % 320) / 16), c = ch % 16;
+  const p = [bi && bn(bi) + ' বিঘা', ka && bn(ka) + ' কাঠা', c && bn(c) + ' ছটাক'].filter(Boolean);
+  return (p.join(' ') || '০') + ` (≈ ${bn(Math.round(sh * 435.6).toLocaleString('en-US'))} বর্গফুট)`;
+}
+// সিএস অংশ: ১৬ আনা = পূর্ণ; ১ আনা = ২০ গণ্ডা; ১ গণ্ডা = ৪ কড়া; ১ কড়া = ৩ ক্রান্তি; ১ ক্রান্তি = ২০ তিল
+function anaStr(v) {
+  let t = Math.round(v * 76800); if (t <= 0) return '০';
+  const U = [['আনা', 4800], ['গণ্ডা', 240], ['কড়া', 60], ['ক্রান্তি', 20], ['তিল', 1]], p = [];
+  for (const [n, k] of U) { const q = Math.floor(t / k); t -= q * k; if (q) p.push(bn(q) + ' ' + n); }
+  return p.join(' ');
 }
 const pct = v => bn((v * 100).toFixed(2).replace(/\.?0+$/, ''));
 function resultHTML(res, muslim, title) {
-  const e = estateNet(muslim), has = e.total > 0, I = window.Inherit;
+  const e = estateNet(muslim), has = e.total > 0, hasL = e.land > 0, I = window.Inherit;
   const rows = res.rows.map(r => {
     const v = I.val(r.total), each = I.val(r.each);
     return `<div class="rs-row"><div class="rs-top"><div><b>${esc(r.label)}</b>${r.count > 1 ? ` <span class="muted">(${bn(r.count)} জন)</span>` : ''}</div><div class="rs-frac">${I.fracStr(r.total)}</div></div>
       <div class="small muted">${esc(r.why || '')}</div>
       <div class="rs-bar"><i style="width:${Math.min(100, v * 100)}%"></i></div>
-      <div class="small">${pct(v)}%${has ? ` · <b>${money(Math.round(v * e.net))}</b>` : ''}${r.count > 1 ? ` · প্রত্যেকে ${I.fracStr(r.each)} (${pct(each)}%)${has ? ' = <b>' + money(Math.round(each * e.net)) + '</b>' : ''}` : ''}</div></div>`;
+      <div class="small">${pct(v)}%${has ? ` · 💰 <b>${money(Math.round(v * e.net))}</b>` : ''}${hasL ? ` · 🌾 <b>${landStr(v * e.landNet)}</b>` : ''}</div>
+      <div class="small">📜 সিএস অংশ: <b>${anaStr(v)}</b></div>
+      ${hasL ? `<div class="small muted">${landStr2(v * e.landNet)}</div>` : ''}
+      ${r.count > 1 ? `<div class="small muted">প্রত্যেকে ${I.fracStr(r.each)} (${pct(each)}%)${has ? ' · ' + money(Math.round(each * e.net)) : ''}${hasL ? ' · ' + landStr(each * e.landNet) : ''} · সিএস ${anaStr(each)}</div>` : ''}</div>`;
   }).join('');
   let text = `${title}\n`;
-  if (has) text += `মোট সম্পত্তি: ${money(e.total)}${e.funeral ? `, খরচ: ${money(e.funeral)}` : ''}${e.debts ? `, ঋণ: ${money(e.debts)}` : ''}${e.will ? `, উইল: ${money(Math.round(e.will))}` : ''}\nবণ্টনযোগ্য: ${money(Math.round(e.net))}\n`;
-  text += '\n' + res.rows.map(r => `• ${r.label}${r.count > 1 ? ` (${bn(r.count)} জন)` : ''}: ${I.fracStr(r.total)} (${pct(I.val(r.total))}%)${has ? ' = ' + money(Math.round(I.val(r.total) * e.net)) : ''}${r.count > 1 ? `; প্রত্যেকে ${I.fracStr(r.each)}${has ? ' = ' + money(Math.round(I.val(r.each) * e.net)) : ''}` : ''}`).join('\n');
+  if (hasL) text += `মোট জমি: ${landStr(e.land)}${e.lwill ? `, ওসিয়ত: ${landStr(e.lwill)}` : ''}\nবণ্টনযোগ্য জমি: ${landStr(e.landNet)}\n`;
+  if (has) text += `মোট টাকা: ${money(e.total)}${e.funeral ? `, খরচ: ${money(e.funeral)}` : ''}${e.debts ? `, ঋণ: ${money(e.debts)}` : ''}${e.will ? `, উইল: ${money(Math.round(e.will))}` : ''}\nবণ্টনযোগ্য: ${money(Math.round(e.net))}\n`;
+  text += '\n' + res.rows.map(r => `• ${r.label}${r.count > 1 ? ` (${bn(r.count)} জন)` : ''}: ${I.fracStr(r.total)} (${pct(I.val(r.total))}%)${has ? ' = ' + money(Math.round(I.val(r.total) * e.net)) : ''}${hasL ? ' | জমি ' + landStr(I.val(r.total) * e.landNet) + ' = ' + landStr2(I.val(r.total) * e.landNet).replace(/ \(.*$/, '') : ''} | সিএস ${anaStr(I.val(r.total))}${r.count > 1 ? `; প্রত্যেকে ${I.fracStr(r.each)}${has ? ' = ' + money(Math.round(I.val(r.each) * e.net)) : ''}${hasL ? ' | জমি ' + landStr(I.val(r.each) * e.landNet) : ''} | সিএস ${anaStr(I.val(r.each))}` : ''}`).join('\n');
   if (res.notes.length) text += '\n\nমন্তব্য:\n' + res.notes.map(n => '- ' + n).join('\n');
   text += '\n\n(সহায়ক হিসাব; চূড়ান্ত সিদ্ধান্তের আগে আইনগত যাচাই করুন) — কেস ডায়েরি';
-  return (res.rows.length ? `${has ? `<div class="card"><div class="small muted">বণ্টনযোগ্য সম্পত্তি</div><div class="amt-big">${money(Math.round(e.net))}</div>${e.will ? `<div class="small muted">ওসিয়ত ${money(Math.round(e.will))} আগেই বাদ</div>` : ''}</div>` : ''}<div class="card">${rows}</div>` : '<div class="empty"><b>ওয়ারিস বাছুন</b>উপরে থেকে যাদের আছে তাদের সংখ্যা দিন।</div>')
+  return (res.rows.length ? `${has ? `<div class="card"><div class="small muted">বণ্টনযোগ্য টাকা</div><div class="amt-big">${money(Math.round(e.net))}</div>${e.will ? `<div class="small muted">ওসিয়ত ${money(Math.round(e.will))} আগেই বাদ</div>` : ''}</div>` : ''}${hasL ? `<div class="card"><div class="small muted">বণ্টনযোগ্য জমি</div><div class="amt-big">${landStr(e.landNet)}</div>${e.lwill ? `<div class="small muted">ওসিয়ত ${landStr(e.lwill)} আগেই বাদ</div>` : ''}</div>` : ''}<div class="card">${rows}</div>` : '<div class="empty"><b>ওয়ারিস বাছুন</b>উপরে থেকে যাদের আছে তাদের সংখ্যা দিন।</div>')
     + (res.notes.length ? `<div class="card note">${res.notes.map(n => `<div class="small">• ${esc(n)}</div>`).join('')}</div>` : '')
     + (res.rows.length ? `<textarea id="inhText" hidden>${esc(text)}</textarea><button class="btn primary block" data-action="share-inherit" data-title="${esc(title)}">ফলাফল শেয়ার করুন</button>` : '');
 }
@@ -1609,7 +1645,7 @@ function inheritView(kind) {
         o[key] = Math.max(0, Math.min(mx, (o[key] || 0) + d));
         form.innerHTML = muslim ? musFormHTML() : hinFormHTML(); draw();
       };
-      [['eTotal', 'total'], ['eFuneral', 'funeral'], ['eDebts', 'debts'], ['eWill', 'will']].forEach(([id, k]) => $('#' + id).addEventListener('input', e => { inh.est[k] = e.target.value; draw(); }));
+      [['eTotal', 'total'], ['eFuneral', 'funeral'], ['eDebts', 'debts'], ['eWill', 'will'], ['eAcre', 'acre'], ['eBigha', 'bigha'], ['eKatha', 'katha'], ['eChhatak', 'chhatak'], ['eDec', 'dec'], ['eLWill', 'lwill']].forEach(([id, k]) => $('#' + id).addEventListener('input', e => { inh.est[k] = e.target.value; draw(); }));
     }
   };
 }
