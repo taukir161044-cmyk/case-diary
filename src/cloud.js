@@ -62,6 +62,7 @@ if (!configured) {
         if (e && e.code === 'permission-denied') return null; throw e;
       });
       if (!m || !m.exists()) return { removed: true };
+      if (m.data().blocked) return { blocked: true };
       const ch = await getDoc(doc(db, 'chambers', chamberId));
       const role = m.data().role;
       return {
@@ -138,6 +139,28 @@ if (!configured) {
     },
     async removeMember(chamberId, uid) {
       await timeout(deleteDoc(doc(db, 'chambers', chamberId, 'members', uid)), 15000);
+    },
+    /* ---- বার্তা/আপডেট নোটিশ (সবাই পড়তে পারে; লিখতে পারে শুধু সুপার অ্যাডমিন) ---- */
+    async getConfig() {
+      const out = {};
+      for (const id of ['announcement', 'update']) {
+        try { const d = await timeout(getDoc(doc(db, 'config', id)), 8000); out[id] = d.exists() ? d.data() : null; } catch (e) { out[id] = undefined; }
+      }
+      return out;
+    },
+    async setConfig(id, data) { await timeout(setDoc(doc(db, 'config', id), clean({ ...data, at: Date.now() })), 15000); },
+
+    /* ---- সুপার অ্যাডমিন: সব চেম্বার ও ব্যবহারকারী ---- */
+    async adminList() {
+      const cs = await timeout(getDocs(collection(db, 'chambers')), 20000), out = [];
+      for (const ch of cs.docs) {
+        const ms = await getDocs(collection(db, 'chambers', ch.id, 'members'));
+        out.push({ chamberId: ch.id, name: ch.data().name || '', code: ch.data().code || '', members: ms.docs.map(d => ({ uid: d.id, ...d.data() })) });
+      }
+      return out;
+    },
+    async setBlocked(chamberId, uid, blocked) {
+      await timeout(updateDoc(doc(db, 'chambers', chamberId, 'members', uid), { blocked: !!blocked }), 15000);
     },
     async newCode(chamberId, oldCode) {
       const user = requireUser(), code = genCode();

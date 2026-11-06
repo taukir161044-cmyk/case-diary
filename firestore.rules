@@ -7,7 +7,11 @@ service cloud.firestore {
 
     function signedIn() { return request.auth != null; }
     function chamberPath(cid) { return /databases/$(database)/documents/chambers/$(cid); }
-    function isMember(cid) { return signedIn() && exists(/databases/$(database)/documents/chambers/$(cid)/members/$(request.auth.uid)); }
+    // সুপার অ্যাডমিন (অ্যাপের মালিক) — ইমেইল বদলাতে চাইলে এখানে বদলান
+    function isSuper() { return signedIn() && request.auth.token.email == 'fahadtaukir@gmail.com'; }
+    function memberDoc(cid) { return /databases/$(database)/documents/chambers/$(cid)/members/$(request.auth.uid); }
+    // ব্লক করা সদস্য কোনো তথ্য দেখতে/লিখতে পারবে না
+    function isMember(cid) { return signedIn() && exists(memberDoc(cid)) && get(memberDoc(cid)).data.get('blocked', false) != true; }
     function isAdmin(cid) {
       return signedIn() && get(/databases/$(database)/documents/chambers/$(cid)/members/$(request.auth.uid)).data.role == 'admin';
     }
@@ -15,6 +19,13 @@ service cloud.firestore {
     // কে কোন চেম্বারে আছে তার ইঙ্গিত (শুধু নিজে দেখতে/লিখতে পারবে)
     match /users/{uid} {
       allow read, write: if signedIn() && request.auth.uid == uid;
+      allow read: if isSuper();
+    }
+
+    // বার্তা ও আপডেট নোটিশ: সবাই পড়তে পারে, লিখতে পারে শুধু সুপার অ্যাডমিন
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isSuper();
     }
 
     // যোগ দেওয়ার কোড: কেউ একটি নির্দিষ্ট কোড খুঁজতে পারবে, কিন্তু তালিকা দেখতে পারবে না
@@ -26,20 +37,20 @@ service cloud.firestore {
     }
 
     match /chambers/{cid} {
-      allow read: if isMember(cid);
+      allow read: if isMember(cid) || isSuper();
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
       allow update: if isAdmin(cid);
 
       match /members/{uid} {
-        allow read: if isMember(cid);
+        allow read: if isMember(cid) || isSuper() || (signedIn() && request.auth.uid == uid);
         // অ্যাডভোকেট নিজের চেম্বারে নিজেকে যোগ করতে পারবে; ক্লার্ক সঠিক কোড দিয়ে নিজেকে যোগ করতে পারবে
         allow create: if signedIn() && request.auth.uid == uid && (
           (request.resource.data.role == 'admin' && get(chamberPath(cid)).data.ownerUid == uid) ||
           (request.resource.data.role == 'clerk' && request.resource.data.code == get(chamberPath(cid)).data.code)
         );
-        allow update: if isAdmin(cid);
+        allow update: if isAdmin(cid) || isSuper();
         // অ্যাডভোকেট ক্লার্ককে সরাতে পারবে; ক্লার্ক নিজে বের হতে পারবে
-        allow delete: if (isAdmin(cid) && uid != request.auth.uid)
+        allow delete: if isSuper() || (isAdmin(cid) && uid != request.auth.uid)
                       || (signedIn() && request.auth.uid == uid && resource.data.role == 'clerk');
       }
 
