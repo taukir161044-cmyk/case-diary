@@ -38,3 +38,28 @@ fs.writeFileSync(dir + '/ic_stat_case.xml', `<?xml version="1.0" encoding="utf-8
 </vector>
 `);
 console.log('নোটিফিকেশন আইকন যোগ হয়েছে');
+
+// স্থায়ী সাইনিং কী: প্রতিবার একই কী দিয়ে সই হয়, তাই পুরনো অ্যাপের ওপর আপডেট ইনস্টল করা যায় (আনইনস্টল লাগে না)
+const gradleFile = 'android/app/build.gradle';
+let gr = fs.readFileSync(gradleFile, 'utf8');
+if (!gr.includes('signingConfigs.casediary')) {
+  gr = gr.replace(/android \{\n/, `android {
+    signingConfigs {
+        casediary {
+            storeFile file("\${rootProject.projectDir}/../keystore/casediary.jks")
+            storePassword "casediary123"
+            keyAlias "casediary"
+            keyPassword "casediary123"
+        }
+    }
+`);
+  gr = gr.replace(/buildTypes \{\n/, `buildTypes {
+        debug {
+            signingConfig signingConfigs.casediary
+        }
+`);
+  gr = gr.replace(/versionCode 1\n/, 'versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")\n');
+  gr = gr.replace(/versionName "1.0"/, 'versionName "2.3"');
+  fs.writeFileSync(gradleFile, gr);
+}
+console.log('সাইনিং কী ও ভার্সন কোড বসানো হয়েছে');
