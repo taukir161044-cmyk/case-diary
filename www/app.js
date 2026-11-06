@@ -640,7 +640,7 @@ function vMore() {
     </div>
     <div class="section-title">তথ্য</div>
     <div class="card small muted">মোট মামলা: ${bn(db.cases.length)} · মক্কেল: ${bn(db.clients.length)} · তারিখের রেকর্ড: ${bn(db.hearings.length)}<br>
-      ${cloudOn() ? 'লগইন করা থাকায় তথ্য আপনার নিজের Firebase প্রজেক্টে (Google সার্ভারে) জমা হচ্ছে এবং চেম্বারের সবার ফোনে মিলে যাচ্ছে। ইন্টারনেট না থাকলেও কাজ চলে, নেট এলে নিজে সিঙ্ক হয়।' : 'ইন্টারনেট ছাড়াই সব কাজ করে। লগইন না করলে কোনো তথ্য কোথাও পাঠানো হয় না।'}<br>কেস ডায়েরি v2.1 · App built by Adv Abu Fahad Taukir</div>`;
+      ${cloudOn() ? 'লগইন করা থাকায় তথ্য আপনার নিজের Firebase প্রজেক্টে (Google সার্ভারে) জমা হচ্ছে এবং চেম্বারের সবার ফোনে মিলে যাচ্ছে। ইন্টারনেট না থাকলেও কাজ চলে, নেট এলে নিজে সিঙ্ক হয়।' : 'ইন্টারনেট ছাড়াই সব কাজ করে। লগইন না করলে কোনো তথ্য কোথাও পাঠানো হয় না।'}<br>কেস ডায়েরি v${APP_VERSION} · App built by Adv Abu Fahad Taukir</div>`;
   return {
     title: 'আরও', html,
     after() {
@@ -1085,7 +1085,7 @@ function gateHTML(mode, msg) {
       <div class="gate-err" id="gateErr"></div>
       <button class="btn primary block" id="gateSubmit" data-label="${label}" type="submit">${label}</button>
     </form>
-    ${reg ? '' : '<button class="linkbtn mt" data-action="gate-reset">পাসওয়ার্ড ভুলে গেছেন?</button>'}
+    ${reg ? '' : '<button type="button" class="btn block mt" data-action="gate-reset">🔑 পাসওয়ার্ড ভুলে গেছেন? রিসেট করুন</button><div class="small muted" style="text-align:center;margin-top:4px">উপরে ইমেইল লিখে চাপুন; লিংক না এলে Spam ফোল্ডার দেখুন</div>'}
     <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:10px">${skip}</div></div>`;
 }
 function showGate(mode, msg) {
@@ -1147,7 +1147,7 @@ document.addEventListener('submit', async e => {
 async function gateReset() {
   const email = ((document.querySelector('#gateForm [name=email]') || {}).value || '').trim();
   if (!email) return gateErr('উপরে ইমেইল লিখে তারপর চাপুন');
-  try { await Cloud.resetPassword(email); toast('পাসওয়ার্ড বদলানোর লিংক ইমেইলে পাঠানো হয়েছে'); }
+  try { await Cloud.resetPassword(email); gateErr(''); toast('পাসওয়ার্ড বদলানোর লিংক ' + email + ' ঠিকানায় পাঠানো হয়েছে (Spam-ও দেখুন)'); }
   catch (err) { gateErr(cloudErr(err)); }
 }
 
@@ -1220,12 +1220,16 @@ function startCloud(p) {
 async function onCloudError(err) {
   console.warn('cloud', err);
   if (err && err.code === 'permission-denied' && auth.user) {
-    try { const p = await Cloud.getProfile(auth.user.uid); if (!p || p.removed) handleRemoved(); }
+    try { const p = await Cloud.getProfile(auth.user.uid); if (!p || p.removed) handleRemoved(); else if (p.blocked) handleBlocked(); }
     catch (e) { /* অফলাইন — পরে দেখা হবে */ }
   }
 }
 async function handleRemoved() {
   try { localStorage.setItem('caseDiary.gateMsg', 'আপনাকে এই চেম্বার থেকে সরিয়ে দেওয়া হয়েছে। অ্যাডভোকেটের কাছ থেকে নতুন কোড নিয়ে আবার যোগ দিন।'); } catch (e) { /* ignore */ }
+  await hardLogout();
+}
+async function handleBlocked() {
+  try { localStorage.setItem('caseDiary.gateMsg', 'আপনার অ্যাকাউন্টটি বন্ধ (ব্লক) করা আছে। যোগাযোগ করুন: ' + ABOUT.mobile); } catch (e) { /* ignore */ }
   await hardLogout();
 }
 async function clearReminders() {
@@ -1294,6 +1298,7 @@ function initCloud() {
       const p = await Cloud.getProfile(user.uid);
       if (!p) { if (!auth.profile) showGate('setup'); return; }
       if (p.removed) { handleRemoved(); return; }
+      if (p.blocked) { handleBlocked(); return; }
       startCloud(p);
     } catch (e) {
       console.warn('profile', e);
@@ -1329,8 +1334,10 @@ function accountHTML() {
       <div class="small mt">চেম্বার: <b>${esc(p.chamberName)}</b></div>
       <div class="small muted">অবস্থা: <span id="syncText">${SYNC_TEXT[auth.status]}</span></div>
       ${legacy ? `<div class="hint">এই ফোনে লগইনের আগের ${bn(legacy)}টি মামলা আছে যা ক্লাউডে নেই।</div><button class="btn small mt" data-action="upload-legacy">ক্লাউডে তুলুন</button>` : ''}
+      <button class="btn block mt" data-action="my-reset">🔑 পাসওয়ার্ড বদলান (ইমেইলে লিংক যাবে)</button>
       <button class="btn danger block mt" data-action="logout">লগআউট</button>
     </div>
+    ${isSuper() ? '<a class="card" href="#/admin" style="display:block;border:2px solid var(--accent)"><div class="row between"><div><div class="strong">🛠 অ্যাডমিন প্যানেল</div><div class="small muted">ব্যবহারকারী, পপআপ বার্তা, আপডেট নোটিশ</div></div><b>›</b></div></a>' : ''}
     ${admin ? `<div class="section-title">ক্লার্ক যোগ করুন</div><div class="card">
       <div class="small muted">ক্লার্ক একই অ্যাপ ইনস্টল করে "নতুন অ্যাকাউন্ট" খুলবে, তারপর "ক্লার্ক" বেছে এই কোডটি দেবে।</div>
       <div class="code mt" id="joinCode">${esc(p.code || '—')}</div>
@@ -1348,7 +1355,7 @@ let lastRoute = '';
 
 function render() {
   const { name, id } = route();
-  const views = { today: () => vToday(), cases: () => vCases(), case: () => vCase(id), clients: () => vClients(), client: () => vClient(id), fees: () => isClerk() ? vToday() : vFees(), more: () => vMore(), causelist: () => vCauseList(id), courts: () => vCourts(), faraiz: () => vFaraiz(), hindu: () => vHindu(), about: () => vAbout() };
+  const views = { today: () => vToday(), cases: () => vCases(), case: () => vCase(id), clients: () => vClients(), client: () => vClient(id), fees: () => isClerk() ? vToday() : vFees(), more: () => vMore(), causelist: () => vCauseList(id), courts: () => vCourts(), faraiz: () => vFaraiz(), hindu: () => vHindu(), about: () => vAbout(), admin: () => isSuper() ? vAdmin() : vToday() };
   if (!views[name]) { location.replace('#/today'); return; }
   const r = views[name]();
   const bar = $('.appbar');
@@ -1356,12 +1363,106 @@ function render() {
   $('#view').innerHTML = r.html;
   const fab = $('#fab');
   if (r.fab) { fab.hidden = false; fab.dataset.action = r.fab.action; fab.setAttribute('aria-label', r.fab.label); } else fab.hidden = true;
-  const tab = { case: 'cases', client: 'clients', causelist: 'today', courts: 'more', faraiz: 'more', hindu: 'more', about: 'more' }[name] || name;
+  const tab = { case: 'cases', client: 'clients', causelist: 'today', courts: 'more', faraiz: 'more', hindu: 'more', about: 'more', admin: 'more' }[name] || name;
   const feeTab = document.querySelector('#tabs a[data-tab=fees]'); if (feeTab) feeTab.hidden = isClerk();
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   const key = name + '/' + (id || '');
   if (key !== lastRoute) { window.scrollTo(0, 0); lastRoute = key; }
   if (r.after) r.after();
+}
+
+
+/* ======================================================================
+   সুপার অ্যাডমিন প্যানেল + সবার জন্য পপআপ বার্তা / আপডেট নোটিশ
+   ====================================================================== */
+const SUPER_EMAIL = 'fahadtaukir@gmail.com';
+const isSuper = () => !!(cloudOn() && auth.user && String(auth.user.email || '').toLowerCase() === SUPER_EMAIL);
+const admin = { data: null, loading: false, err: '' };
+const verCmp = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0 ? 1 : -1; } return 0; };
+async function admLoad() {
+  if (admin.loading) return; admin.loading = true; admin.err = '';
+  try { admin.data = await Cloud.adminList(); } catch (e) { admin.err = cloudErr(e); admin.data = []; }
+  admin.loading = false; if (route().name === 'admin') render();
+}
+async function admBlock(cid, uid, b) {
+  if (!await ask(b ? 'এই ব্যবহারকারীকে ব্লক করবেন? সে আর অ্যাপে ঢুকতে বা তথ্য দেখতে পারবে না।' : 'ব্লক তুলে নেবেন?', b ? 'ব্লক করুন' : 'আনব্লক', b)) return;
+  try { await Cloud.setBlocked(cid, uid, b); admin.data = null; render(); toast(b ? 'ব্লক করা হয়েছে' : 'আনব্লক হয়েছে'); } catch (e) { toast(cloudErr(e)); }
+}
+async function admDelete(cid, uid) {
+  if (!await ask('এই ব্যবহারকারীকে চেম্বার থেকে সরাবেন?', 'সরান', true)) return;
+  try { await Cloud.removeMember(cid, uid); admin.data = null; render(); toast('সরানো হয়েছে'); } catch (e) { toast(cloudErr(e)); }
+}
+async function admPublish(kind) {
+  const v = n => ($('#' + n) || {}).value || '';
+  let data;
+  if (kind === 'announcement') {
+    if (!v('annMsg').trim()) return toast('বার্তা লিখুন');
+    data = { active: true, id: String(Date.now()), title: v('annTitle').trim(), message: v('annMsg').trim(), linkText: v('annLinkText').trim(), url: v('annUrl').trim() };
+  } else {
+    if (!/^\d+(\.\d+)*$/.test(v('updVer').trim())) return toast('ভার্সন লিখুন, যেমন 2.4');
+    data = { active: true, version: v('updVer').trim(), message: v('updMsg').trim(), url: v('updUrl').trim(), force: !!($('#updForce') || {}).checked };
+  }
+  try { await Cloud.setConfig(kind, data); toast('প্রকাশিত হয়েছে — ব্যবহারকারীরা অ্যাপ খুললে দেখবে'); noticeCache = null; } catch (e) { toast(cloudErr(e)); }
+}
+async function admOff(kind) {
+  try { await Cloud.setConfig(kind, { active: false }); toast('বন্ধ করা হয়েছে'); } catch (e) { toast(cloudErr(e)); }
+}
+function vAdmin() {
+  if (!admin.data && !admin.loading) admLoad();
+  const list = admin.data;
+  const users = !list ? '<div class="small muted">লোড হচ্ছে…</div>' : admin.err ? `<div class="gate-err">${esc(admin.err)}</div>` : !list.length ? '<div class="small muted">কেউ নেই</div>' :
+    list.map(ch => `<div class="card"><div class="strong">${esc(ch.name || 'চেম্বার')}</div><div class="small muted">কোড: ${esc(ch.code)} · সদস্য ${bn(ch.members.length)}</div>
+      ${ch.members.map(m => `<div class="pay"><div><div>${esc(m.name || '—')} <span class="chip ${m.role === 'admin' ? 'soon' : ''}">${m.role === 'admin' ? 'অ্যাডভোকেট' : 'ক্লার্ক'}</span>${m.blocked ? ' <span class="chip late">ব্লক</span>' : ''}</div><div class="muted small">${esc(m.email || '')}</div></div>
+        ${m.uid === auth.user.uid ? '' : `<div class="col-end"><button class="linkbtn ${m.blocked ? '' : 'red'}" data-action="adm-block" data-cid="${esc(ch.chamberId)}" data-uid="${esc(m.uid)}" data-b="${m.blocked ? 0 : 1}">${m.blocked ? 'আনব্লক' : 'ব্লক'}</button><button class="linkbtn red" data-action="adm-del" data-cid="${esc(ch.chamberId)}" data-uid="${esc(m.uid)}">সরান</button></div>`}</div>`).join('')}</div>`).join('');
+  const html = `
+    <div class="section-title">ব্যবহারকারী <button class="linkbtn" data-action="adm-refresh">রিফ্রেশ</button></div>${users}
+    <div class="section-title">সবার অ্যাপে পপআপ বার্তা</div>
+    <div class="card"><label class="field"><span>শিরোনাম</span><input id="annTitle" placeholder="যেমন: জরুরি নোটিশ"></label>
+      <label class="field"><span>বার্তা</span><textarea id="annMsg" style="min-height:90px"></textarea></label>
+      <div class="grid2"><label class="field"><span>বোতামের লেখা (ঐচ্ছিক)</span><input id="annLinkText" placeholder="বিস্তারিত দেখুন"></label>
+      <label class="field"><span>লিংক (ঐচ্ছিক)</span><input id="annUrl" type="url" inputmode="url" placeholder="https://"></label></div>
+      <div class="row"><button class="btn primary grow" data-action="adm-pub-ann">প্রকাশ করুন</button><button class="btn grow" data-action="adm-off-ann">বন্ধ করুন</button></div>
+      <div class="small muted mt">প্রতিটি নতুন বার্তা প্রত্যেক ব্যবহারকারী একবার দেখবে।</div></div>
+    <div class="section-title">অ্যাপ আপডেট নোটিশ</div>
+    <div class="card"><div class="small muted">বর্তমান ভার্সন: <b>${APP_VERSION}</b>। নতুন APK বানানোর পর এখানে নতুন ভার্সন ও ডাউনলোড লিংক দিলে পুরনো ভার্সনের ব্যবহারকারীরা পপআপ পাবে।</div>
+      <div class="grid2 mt"><label class="field"><span>নতুন ভার্সন</span><input id="updVer" placeholder="2.4" inputmode="decimal"></label>
+      <label class="field"><span>ডাউনলোড লিংক</span><input id="updUrl" type="url" inputmode="url" placeholder="https://"></label></div>
+      <label class="field"><span>কী নতুন (ঐচ্ছিক)</span><textarea id="updMsg" style="min-height:70px"></textarea></label>
+      <label class="row" style="gap:8px;margin-bottom:12px"><input type="checkbox" id="updForce"><span class="small">বাধ্যতামূলক (বন্ধ করা যাবে না)</span></label>
+      <div class="row"><button class="btn primary grow" data-action="adm-pub-upd">প্রকাশ করুন</button><button class="btn grow" data-action="adm-off-upd">বন্ধ করুন</button></div></div>`;
+  return { title: 'অ্যাডমিন প্যানেল', html, back: '#/more' };
+}
+
+let noticeCache = null, noticeBusy = false;
+function noticeShown(html) {
+  let n = $('#notice');
+  if (!n) { n = document.createElement('div'); n.id = 'notice'; n.className = 'dialog'; n.style.zIndex = 95; document.body.appendChild(n); }
+  n.innerHTML = html; n.hidden = false;
+}
+function closeNotice() { const n = $('#notice'); if (n) { n.hidden = true; n.innerHTML = ''; } }
+const seenKey = 'caseDiary.seenNotice';
+const seen = () => { try { return JSON.parse(localStorage.getItem(seenKey) || '{}'); } catch (e) { return {}; } };
+const markSeen = (k, v) => { try { const s = seen(); s[k] = v; localStorage.setItem(seenKey, JSON.stringify(s)); } catch (e) { /* ignore */ } };
+const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
+async function checkNotices() {
+  if (!Cloud.configured || noticeBusy) return; noticeBusy = true;
+  try {
+    let cfg;
+    try { cfg = await Cloud.getConfig(); if (cfg.announcement !== undefined || cfg.update !== undefined) localStorage.setItem('caseDiary.notices', JSON.stringify(cfg)); } catch (e) { /* ignore */ }
+    if (!cfg) { try { cfg = JSON.parse(localStorage.getItem('caseDiary.notices') || '{}'); } catch (e) { cfg = {}; } }
+    const u = cfg.update, a = cfg.announcement, sn = seen();
+    if (u && u.active && verCmp(u.version, APP_VERSION) > 0 && (u.force || sn.upd !== u.version)) {
+      const link = safeUrl(u.url);
+      noticeShown(`<div class="box"><h3 style="margin:0 0 8px">🔔 নতুন আপডেট এসেছে (v${esc(u.version)})</h3><p>${esc(u.message || 'অ্যাপের নতুন সংস্করণ পাওয়া যাচ্ছে।').replace(/\n/g, '<br>')}</p><div class="small muted">আপনার ভার্সন: ${APP_VERSION}</div>
+        <div class="btns">${u.force ? '' : '<button class="btn" data-action="notice-ok">পরে</button>'}${link ? `<a class="btn primary" href="${esc(link)}" target="_blank" rel="noopener">ডাউনলোড</a>` : ''}</div></div>`);
+      if (!u.force) markSeen('upd', u.version);
+    } else if (a && a.active && a.message && sn.ann !== a.id) {
+      const link = safeUrl(a.url);
+      noticeShown(`<div class="box">${a.title ? `<h3 style="margin:0 0 8px">${esc(a.title)}</h3>` : ''}<p>${esc(a.message).replace(/\n/g, '<br>')}</p>
+        <div class="btns"><button class="btn ${link ? '' : 'primary'}" data-action="notice-ok">ঠিক আছে</button>${link ? `<a class="btn primary" href="${esc(link)}" target="_blank" rel="noopener">${esc(a.linkText || 'বিস্তারিত')}</a>` : ''}</div></div>`);
+      markSeen('ann', a.id);
+    }
+  } finally { noticeBusy = false; }
 }
 
 /* ======================================================================
@@ -1373,7 +1474,7 @@ function openDrawer() {
   const here = route().name;
   const item = (href, ico, t, sub = '') => `<a class="d-item ${here === href.slice(2) ? 'on' : ''}" href="${href}" data-action="close-drawer"><span class="d-ico">${ico}</span><span><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span></a>`;
   d.innerHTML = `<div class="d-back" data-action="close-drawer"></div><aside class="d-panel">
-    <div class="d-head"><div class="d-title">কেস ডায়েরি</div><div class="small">${esc(db.settings.about.name || '')}</div></div>
+    <div class="d-head"><div class="d-title">কেস ডায়েরি</div><div class="small">${esc(ABOUT.name)}</div></div>
     <div class="d-sec">উত্তরাধিকার হিসাব</div>
     ${item('#/faraiz', '☪', 'মুসলিম ফারায়েজ', 'হানাফী মত — ওয়ারিসদের অংশ')}
     ${item('#/hindu', 'ॐ', 'হিন্দু উত্তরাধিকার', 'দায়ভাগা — পুরুষের সম্পত্তি')}
@@ -1385,44 +1486,29 @@ function openDrawer() {
     ${item('#/courts', '🏛', 'আদালতের তালিকা')}
     ${item('#/more', '⚙', 'আরও (ব্যাকআপ, রিমাইন্ডার)')}
     ${item('#/about', 'ℹ', 'আমার পরিচয় (About)')}
+    ${isSuper() ? item('#/admin', '🛠', 'অ্যাডমিন প্যানেল', 'ব্যবহারকারী · বার্তা · আপডেট') : ''}
   </aside>`;
   d.hidden = false; requestAnimationFrame(() => d.classList.add('open'));
 }
 function closeDrawer() { const d = $('#drawer'); if (!d) return; d.classList.remove('open'); setTimeout(() => { d.hidden = true; }, 180); }
 
-/* ---- আমার পরিচয় ---- */
-function aboutText() {
-  const a = db.settings.about;
-  return [a.name, a.title, a.enroll && 'এনরোলমেন্ট: ' + a.enroll, a.address && 'ঠিকানা: ' + a.address, a.mobile && 'মোবাইল: ' + a.mobile, a.email && 'ইমেইল: ' + a.email].filter(Boolean).join('\n');
-}
+/* ---- আমার পরিচয় (স্থির; কেউ বদলাতে পারে না) ---- */
+const ABOUT = { name: 'অ্যাডভোকেট মোঃ আবু ফাহাদ তাউকির', en: 'Advocate Md. Abu Fahad Taukir', place: 'জামালপুর, বাংলাদেশ', mobile: '01999891729', email: 'fahadtaukir@gmail.com' };
+const APP_VERSION = '2.3';
+function aboutText() { return `${ABOUT.name}\n${ABOUT.en}\nমোবাইল: ${ABOUT.mobile}\nইমেইল: ${ABOUT.email}`; }
 function vAbout() {
-  const a = db.settings.about;
-  const row = (l, v, link) => v ? `<div class="ab-row"><span>${l}</span>${link ? `<a href="${link}">${esc(v)}</a>` : `<b>${esc(v)}</b>`}</div>` : '';
   const html = `<div class="card about">
       <div class="ab-av">⚖</div>
-      <div class="ab-name">${esc(a.name || 'নাম লেখা হয়নি')}</div>
-      ${a.title ? `<div class="muted">${esc(a.title)}</div>` : ''}
-      ${row('এনরোলমেন্ট', a.enroll)}${row('ঠিকানা', a.address)}${row('মোবাইল', a.mobile, a.mobile ? 'tel:' + a.mobile.replace(/[^\d+]/g, '') : '')}${row('ইমেইল', a.email, a.email ? 'mailto:' + a.email : '')}
-      ${!a.address && !a.mobile && !a.email ? '<div class="small muted mt">ঠিকানা, মোবাইল, ইমেইল এখনো লেখা হয়নি। নিচের বোতামে চেপে লিখুন।</div>' : ''}
-      <div class="row mt"><button class="btn primary grow" data-action="edit-about">তথ্য বদলান</button><button class="btn grow" data-action="share-about">শেয়ার</button></div>
+      <div class="ab-name">${esc(ABOUT.name)}</div>
+      <div class="muted">${esc(ABOUT.en)}</div>
+      <div class="ab-row"><span>কর্মক্ষেত্র</span><b>${esc(ABOUT.place)}</b></div>
+      <div class="ab-row"><span>মোবাইল</span><a href="tel:${ABOUT.mobile}">${ABOUT.mobile}</a></div>
+      <div class="ab-row"><span>ইমেইল</span><a href="mailto:${ABOUT.email}">${ABOUT.email}</a></div>
+      <div class="row mt"><a class="btn primary grow" href="tel:${ABOUT.mobile}">কল করুন</a><a class="btn grow" href="mailto:${ABOUT.email}">ইমেইল</a></div>
+      <button class="btn block mt" data-action="share-about">শেয়ার</button>
     </div>
-    <div class="card"><div class="strong">কেস ডায়েরি v2.2</div><div class="small muted">App built by Adv Abu Fahad Taukir</div></div>`;
+    <div class="card"><div class="strong">কেস ডায়েরি v${APP_VERSION}</div><div class="small muted">App built by Adv Abu Fahad Taukir</div></div>`;
   return { title: 'আমার পরিচয়', html, back: '#/today' };
-}
-function aboutForm() {
-  const a = db.settings.about;
-  openSheet('আমার পরিচয়', `
-    ${field('নাম', `<input name="name" value="${esc(a.name)}">`)}
-    ${field('পদবি / পরিচয় (ঐচ্ছিক)', `<input name="title" value="${esc(a.title)}" placeholder="যেমন: আইনজীবী, জেলা ও দায়রা জজ আদালত, জামালপুর">`)}
-    ${field('এনরোলমেন্ট নম্বর (ঐচ্ছিক)', `<input name="enroll" value="${esc(a.enroll)}">`)}
-    ${field('ঠিকানা', `<textarea name="address" style="min-height:70px">${esc(a.address)}</textarea>`)}
-    ${field('মোবাইল', `<input name="mobile" type="tel" value="${esc(a.mobile)}">`)}
-    ${field('ইমেইল (Gmail)', `<input name="email" type="email" value="${esc(a.email)}">`)}`,
-    (fd, f) => {
-      const v = n => (f.elements[n].value || '').trim();
-      db.settings.about = { name: v('name'), title: v('title'), enroll: v('enroll'), address: v('address'), mobile: v('mobile'), email: v('email') };
-      save(); closeSheet(); render(); toast('সংরক্ষিত হয়েছে');
-    });
 }
 
 /* ---- উত্তরাধিকার ---- */
@@ -1545,7 +1631,15 @@ document.addEventListener('click', async e => {
     case 'close-sheet': closeSheet(); break;
     case 'menu': openDrawer(); break;
     case 'close-drawer': closeDrawer(); break;
-    case 'edit-about': aboutForm(); break;
+    case 'my-reset': try { await Cloud.resetPassword(auth.user.email); toast('লিংক পাঠানো হয়েছে: ' + auth.user.email); } catch (err) { toast(cloudErr(err)); } break;
+    case 'adm-refresh': admin.data = null; render(); break;
+    case 'adm-block': admBlock(el.dataset.cid, el.dataset.uid, el.dataset.b === '1'); break;
+    case 'adm-del': admDelete(el.dataset.cid, el.dataset.uid); break;
+    case 'adm-pub-ann': admPublish('announcement'); break;
+    case 'adm-off-ann': admOff('announcement'); break;
+    case 'adm-pub-upd': admPublish('update'); break;
+    case 'adm-off-upd': admOff('update'); break;
+    case 'notice-ok': closeNotice(); break;
     case 'share-about': shareText('আমার পরিচয়', aboutText()); break;
     case 'share-inherit': shareText(el.dataset.title, $('#inhText').value); break;
     case 'new-case': caseForm(); break;
@@ -1648,5 +1742,6 @@ if (!Cloud.configured || db.settings.skipLogin) seedCourts();
 if (isNative()) { if (db.settings.remind) ensureNotifyPermission(false).then(() => scheduleReminders()); }
 if ('serviceWorker' in navigator && !isNative() && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 // তারিখ বদলে গেলে (অ্যাপ খোলা অবস্থায় রাত পেরোলে) স্ক্রিন হালনাগাদ
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !sheetOpen) render(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !sheetOpen) { render(); checkNotices(); } });
+setTimeout(checkNotices, 1200);
 })();

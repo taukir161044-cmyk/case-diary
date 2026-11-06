@@ -372,3 +372,7 @@ details summary::-webkit-details-marker { display: none; }
 .ab-name { font-size: 20px; font-weight: 700; }
 .ab-row { display: flex; justify-content: space-between; gap: 12px; text-align: left; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .ab-row span { color: var(--muted); } .ab-row b, .ab-row a { text-align: right; word-break: break-word; color: inherit; }
+
+.col-end { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.dialog .box .btns a.btn { flex: 1; }
