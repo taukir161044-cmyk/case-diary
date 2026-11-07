@@ -20,6 +20,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read, write: if signedIn() && request.auth.uid == uid;
       allow read: if isSuper();
+      allow delete: if isSuper();
     }
 
     // বার্তা ও আপডেট নোটিশ: সবাই পড়তে পারে, লিখতে পারে শুধু সুপার অ্যাডমিন
@@ -34,12 +35,14 @@ service cloud.firestore {
       allow list: if false;
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
       allow update, delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow delete: if isSuper();
     }
 
     match /chambers/{cid} {
       allow read: if isMember(cid) || isSuper();
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
       allow update: if isAdmin(cid);
+      allow delete: if isSuper();
 
       match /members/{uid} {
         allow read: if isMember(cid) || isSuper() || (signedIn() && request.auth.uid == uid);
@@ -48,7 +51,8 @@ service cloud.firestore {
           (request.resource.data.role == 'admin' && get(chamberPath(cid)).data.ownerUid == uid) ||
           (request.resource.data.role == 'clerk' && request.resource.data.code == get(chamberPath(cid)).data.code)
         );
-        allow update: if isAdmin(cid) || isSuper();
+        allow update: if isAdmin(cid) || isSuper()
+                      || (signedIn() && request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']));
         // অ্যাডভোকেট ক্লার্ককে সরাতে পারবে; ক্লার্ক নিজে বের হতে পারবে
         allow delete: if isSuper() || (isAdmin(cid) && uid != request.auth.uid)
                       || (signedIn() && request.auth.uid == uid && resource.data.role == 'clerk');
@@ -57,17 +61,21 @@ service cloud.firestore {
       // মামলা, তারিখের রেকর্ড, মক্কেল — চেম্বারের সবাই (অ্যাডভোকেট ও ক্লার্ক) দেখতে ও লিখতে পারবে
       match /{coll}/{docId} {
         allow read, write: if coll in ['cases', 'hearings', 'clients'] && isMember(cid);
+        // সুপার অ্যাডমিন শুধু চেম্বার মোছার সময় এগুলো পড়তে/মুছতে পারে
+        allow read, delete: if isSuper();
       }
 
       // ফি-র হিসাব — শুধু অ্যাডভোকেট (ক্লার্ক দেখতে বা লিখতে পারবে না)
       match /fees/{docId} {
         allow read, write: if isAdmin(cid);
+        allow read, delete: if isSuper();
       }
 
       // আদালতের তালিকা — সবাই দেখতে পারবে, বদলাতে পারবে শুধু অ্যাডভোকেট
       match /courts/{docId} {
         allow read: if isMember(cid);
         allow write: if isAdmin(cid);
+        allow read, delete: if isSuper();
       }
     }
   }

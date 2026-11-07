@@ -1,5 +1,5 @@
 // অফলাইনে চালানোর জন্য (শুধু ব্রাউজার/PWA ভার্সনে ব্যবহৃত হয়)
-const CACHE = 'case-diary-v5';
+const CACHE = 'case-diary-v6';
 const FILES = ['./', './index.html', './app.css', './app.js', './pdf.js', './courts-default.js', './inherit.js', './cloud.js', './firebase-config.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

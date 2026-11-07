@@ -143,7 +143,7 @@ if (!configured) {
     /* ---- বার্তা/আপডেট নোটিশ (সবাই পড়তে পারে; লিখতে পারে শুধু সুপার অ্যাডমিন) ---- */
     async getConfig() {
       const out = {};
-      for (const id of ['announcement', 'update']) {
+      for (const id of ['announcement', 'update', 'about']) {
         try { const d = await timeout(getDoc(doc(db, 'config', id)), 8000); out[id] = d.exists() ? d.data() : null; } catch (e) { out[id] = undefined; }
       }
       return out;
@@ -161,6 +161,36 @@ if (!configured) {
     },
     async setBlocked(chamberId, uid, blocked) {
       await timeout(updateDoc(doc(db, 'chambers', chamberId, 'members', uid), { blocked: !!blocked }), 15000);
+    },
+
+    /* ---- নাম বদল ---- */
+    async renameMe(chamberId, uid, name) {
+      await timeout(updateDoc(doc(db, 'chambers', chamberId, 'members', uid), { name }), 15000);
+      try { await timeout(updateDoc(doc(db, 'users', uid), { name }), 15000); } catch (e) { /* ignore */ }
+    },
+    async renameChamber(chamberId, name) {
+      await timeout(updateDoc(doc(db, 'chambers', chamberId), { name }), 15000);
+    },
+    /* ---- সুপার অ্যাডমিন: অ্যাকাউন্ট/চেম্বার মোছা (Authentication-এর রেকর্ড Console থেকে মুছতে হয়) ---- */
+    async adminDeleteUser(chamberId, uid) {
+      await timeout(deleteDoc(doc(db, 'chambers', chamberId, 'members', uid)), 15000);
+      await timeout(deleteDoc(doc(db, 'users', uid)), 15000);
+    },
+    async adminDeleteChamber(chamberId) {
+      const cref = doc(db, 'chambers', chamberId);
+      const cd = await timeout(getDoc(cref), 15000);
+      const ms = await getDocs(collection(db, 'chambers', chamberId, 'members'));
+      for (const m of ms.docs) { try { await deleteDoc(doc(db, 'users', m.id)); } catch (e) { /* ignore */ } }
+      for (const c of [...COLLS, 'members']) {
+        const snap = await getDocs(collection(db, 'chambers', chamberId, c));
+        for (let i = 0; i < snap.docs.length; i += 400) {
+          const b = writeBatch(db);
+          snap.docs.slice(i, i + 400).forEach(d => b.delete(d.ref));
+          await b.commit();
+        }
+      }
+      if (cd.exists() && cd.data().code) { try { await deleteDoc(doc(db, 'joinCodes', cd.data().code)); } catch (e) { /* ignore */ } }
+      await timeout(deleteDoc(cref), 15000);
     },
     async newCode(chamberId, oldCode) {
       const user = requireUser(), code = genCode();

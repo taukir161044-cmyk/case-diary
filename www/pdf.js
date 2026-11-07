@@ -169,5 +169,64 @@
     return { bytes: makePDF(pages), pages: pages.length };
   }
 
-  window.CausePDF = { build };
+  /* data = { head, title, body, sign } — সবই সাধারণ লেখা (\n দিয়ে লাইন)। দরখাস্ত/হাজিরার PDF */
+  async function doc(data) {
+    const canvases = [];
+    let cv, ctx, y;
+    const SZ = 34, LH = Math.round(SZ * 1.85), bottom = H - M - 40, inner = W - 2 * M;
+    const font = (size, weight) => { ctx.font = (weight || 400) + ' ' + size + 'px ' + FONT; };
+    const newPage = () => {
+      cv = document.createElement('canvas'); cv.width = W; cv.height = H; ctx = cv.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.textBaseline = 'top'; canvases.push(cv); y = M + 20;
+    };
+    const line = (t, x, size, weight, align) => {
+      if (y + LH > bottom) newPage();
+      font(size, weight); ctx.fillStyle = '#111'; ctx.textAlign = align || 'left'; ctx.fillText(t, x, y); y += LH;
+    };
+    newPage();
+    for (const para of String(data.head || '').split('\n')) {
+      font(SZ, 600);
+      const ls = para.trim() ? wrap(ctx, para.trim(), inner) : [''];
+      for (const l of ls) line(l, W / 2, SZ, 600, 'center');
+    }
+    y += 14;
+    if (data.title) {
+      font(40, 700);
+      const ls = wrap(ctx, data.title, inner - 60);
+      for (const l of ls) {
+        line(l, W / 2, 40, 700, 'center');
+        const w = ctx.measureText(l).width;
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(W / 2 - w / 2, y - 14); ctx.lineTo(W / 2 + w / 2, y - 14); ctx.stroke();
+      }
+      y += 14;
+    }
+    for (const para of String(data.body || '').split('\n')) {
+      font(SZ, 400);
+      if (!para.trim()) { y += LH * 0.5; continue; }
+      const indent = /^\s*[০-৯0-9]+[।.)]/.test(para) ? 40 : 70;
+      // প্রথম লাইনে ইন্ডেন্ট
+      const words = para.trim().split(/\s+/); let cur = '', first = true;
+      const flush = () => { line(cur, M + (first ? indent : 0), SZ, 400); first = false; };
+      for (const w of words) {
+        const t = cur ? cur + ' ' + w : w;
+        if (ctx.measureText(t).width <= inner - (first ? indent : 0)) cur = t; else { flush(); cur = w; font(SZ, 400); }
+      }
+      if (cur) flush();
+    }
+    if (data.sign && data.sign.trim()) {
+      y += LH * 0.6;
+      const ls = data.sign.split('\n'); font(SZ, 500);
+      const bw = Math.max(380, ...ls.map(l => ctx.measureText(l).width)), x = W - M - bw;
+      if (y + LH * ls.length > bottom) newPage();
+      for (const l of ls) line(l, x, SZ, 500);
+    }
+    canvases.forEach((c, i) => {
+      const cx = c.getContext('2d'); cx.textBaseline = 'top'; cx.font = '400 22px ' + FONT; cx.fillStyle = '#8a969b';
+      cx.textAlign = 'right'; if (canvases.length > 1) cx.fillText('পৃষ্ঠা ' + bn(i + 1) + ' / ' + bn(canvases.length), W - M, H - M + 8);
+    });
+    const pages = canvases.map(c => ({ w: c.width, h: c.height, bytes: b64ToBytes(c.toDataURL('image/jpeg', 0.92).split(',')[1]) }));
+    return { bytes: makePDF(pages), pages: pages.length };
+  }
+
+  window.CausePDF = { build, doc };
 })();

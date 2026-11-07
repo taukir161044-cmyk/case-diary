@@ -59,7 +59,7 @@ if (!gr.includes('signingConfigs.casediary')) {
         }
 `);
   gr = gr.replace(/versionCode 1\n/, 'versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")\n');
-  gr = gr.replace(/versionName "1.0"/, 'versionName "2.3"');
+  gr = gr.replace(/versionName "1.0"/, 'versionName "2.5"');
   fs.writeFileSync(gradleFile, gr);
 }
 console.log('সাইনিং কী ও ভার্সন কোড বসানো হয়েছে');

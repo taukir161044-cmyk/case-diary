@@ -59,7 +59,7 @@ const relChip = s => { if (!s) return ''; const r = rel(s); return `<span class=
 const KEY = 'caseDiary.v1';
 const EMPTY = () => ({
   v: 1, cases: [], hearings: [], clients: [], fees: [], courts: [],
-  settings: { remind: true, evening: '20:00', morning: '07:00', lastBackup: '', askedPerm: false, about: { name: 'অ্যাডভোকেট আবু ফাহাদ তাউকির', title: '', enroll: '', address: '', mobile: '', email: '' } }
+  settings: { theme: 'auto', remind: true, evening: '20:00', morning: '07:00', lastBackup: '', askedPerm: false, about: { name: 'অ্যাডভোকেট আবু ফাহাদ তাউকির', title: '', enroll: '', address: '', mobile: '', email: '' } }
 });
 const normalize = d => {
   const e = EMPTY();
@@ -235,7 +235,7 @@ const dateField = (label, name, val) =>
    ====================================================================== */
 function caseHeadHTML(c) {
   const client = getClient(c.clientId);
-  return `<div class="row between wrap"><b class="caseno">${esc(c.caseNo)}</b><span class="chip ${typeClass(c.type)}">${esc(c.type || 'অন্যান্য')}</span></div>
+  return `<div class="row between wrap"><b class="caseno">${esc(c.caseNo)}</b><span class="row" style="gap:6px"><span class="chip side ${c.ourSide === 'd' ? 'sd' : 'sp'}">${c.ourSide === 'd' ? 'বিবাদী পক্ষ' : 'বাদী পক্ষ'}</span><span class="chip ${typeClass(c.type)}">${esc(c.type || 'অন্যান্য')}</span></span></div>
     <div class="parties">${esc(c.plaintiff || '—')} <span class="vs">বনাম</span> ${esc(c.defendant || '—')}</div>
     <div class="meta">${[c.court, c.subject, client && ('মক্কেল: ' + client.name)].filter(Boolean).map(esc).join(' · ')}</div>
     ${c.oppAdvocate ? `<div class="meta">বিপক্ষের অ্যাডভোকেট: ${esc(c.oppAdvocate)}</div>` : ''}`;
@@ -429,6 +429,7 @@ function vCase(id) {
         ${isActive(c) ? `<button class="btn primary grow" data-action="hearing" data-case="${id}">ফলাফল লিখুন</button>` : ''}
         <button class="btn grow" data-action="edit-case" data-id="${id}">সম্পাদনা</button>
       </div>
+      <button class="btn block mt" data-action="petition" data-id="${id}">🖨 হাজিরা / সময়ের দরখাস্ত (প্রিন্ট)</button>
     </div>
     <div class="section-title">তারিখের ইতিহাস (${bn(hs.length)})</div>
     <div class="card">${hist}</div>
@@ -590,24 +591,28 @@ async function shareText(title, text) {
   }
 }
 
+async function sharePdf(bytes, name, title, dialogTitle) {
+  const fs = plugin('Filesystem'), sh = plugin('Share');
+  if (isNative() && fs && sh) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    await fs.writeFile({ path: name, data: btoa(bin), directory: 'CACHE' });
+    const { uri } = await fs.getUri({ path: name, directory: 'CACHE' });
+    await sh.share({ title, url: uri, dialogTitle });
+  } else {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  }
+}
+
 async function causePDF(date) {
   if (!window.CausePDF) { toast('PDF তৈরির কোড লোড হয়নি'); return; }
   toast('PDF তৈরি হচ্ছে…');
   const name = `cause-list-${date}.pdf`;
   try {
     const { bytes } = await window.CausePDF.build(causeData(date));
-    const fs = plugin('Filesystem'), sh = plugin('Share');
-    if (isNative() && fs && sh) {
-      let bin = '';
-      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-      await fs.writeFile({ path: name, data: btoa(bin), directory: 'CACHE' });
-      const { uri } = await fs.getUri({ path: name, directory: 'CACHE' });
-      await sh.share({ title: 'কজ লিস্ট', url: uri, dialogTitle: 'কজ লিস্ট — শেয়ার বা প্রিন্ট করুন' });
-    } else {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-      a.download = name; document.body.appendChild(a); a.click(); a.remove();
-    }
+    await sharePdf(bytes, name, 'কজ লিস্ট', 'কজ লিস্ট — শেয়ার বা প্রিন্ট করুন');
   } catch (e) {
     if (!/cancel|abort/i.test(String(e && (e.message || e.name)))) { console.error(e); toast('PDF বানানো যায়নি'); }
   }
@@ -616,10 +621,14 @@ async function causePDF(date) {
 /* ======================================================================
    স্ক্রিন: আরও (রিমাইন্ডার, ব্যাকআপ)
    ====================================================================== */
+function applyTheme() { const t = (db.settings && db.settings.theme) || 'auto'; document.documentElement.dataset.theme = t === 'auto' ? '' : t; }
+function setTheme(v) { db.settings.theme = ['light', 'dark'].includes(v) ? v : 'auto'; save(); applyTheme(); render(); }
 function vMore() {
   const s = db.settings, lb = s.lastBackup;
   const html = `
     ${accountHTML()}
+    <div class="section-title">থিম</div>
+    <div class="card"><div class="seg">${[['auto', '📱 অটো'], ['light', '☀ লাইট'], ['dark', '🌙 ডার্ক']].map(([v, t]) => `<button type="button" class="btn ${(s.theme || 'auto') === v ? 'primary' : ''} grow" data-action="set-theme" data-v="${v}">${t}</button>`).join('')}</div></div>
     <div class="section-title">রিমাইন্ডার</div>
     <div class="card">
       <div class="setting"><div><div class="strong">তারিখের নোটিফিকেশন</div><div class="small muted">মামলার আগের দিন ও তারিখের সকালে মনে করিয়ে দেবে</div></div>
@@ -629,14 +638,18 @@ function vMore() {
       <div id="notifyBox" class="mt"><div class="small muted">অবস্থা দেখা হচ্ছে…</div></div>
       <button class="btn small mt" data-action="test-notify">পরীক্ষামূলক নোটিফিকেশন (৫ সেকেন্ডে)</button>
     </div>
+    <div class="section-title">আইন</div>
+    <a class="card" href="#/laws"><div class="row between"><div><div class="strong">📚 আইন লাইব্রেরি</div><div class="small muted">বাংলাদেশ কোডের গুরুত্বপূর্ণ আইন খুঁজুন</div></div><b>›</b></div></a>
     <div class="section-title">আদালত</div>
     <a class="card" href="#/courts"><div class="row between"><div><div class="strong">আদালতের তালিকা</div><div class="small muted">মামলা যোগ করার সময় এখান থেকে আদালত বাছা যায়</div></div><b>${bn(db.courts.length)}টি ›</b></div></a>
     <div class="section-title">ব্যাকআপ</div>
     <div class="card">
       <div class="small muted">তথ্য শুধু এই ফোনেই থাকে। নিয়মিত ব্যাকআপ নিয়ে নিজের Gmail/Drive/WhatsApp-এ পাঠিয়ে রাখুন।</div>
       <div class="small mt">সর্বশেষ ব্যাকআপ: <b>${lb ? fmtDate(lb) : 'কখনো নেওয়া হয়নি'}</b></div>
-      <div class="row mt"><button class="btn primary grow" data-action="backup">ব্যাকআপ নিন</button>
+      <div class="row mt"><button class="btn primary grow" data-action="backup">☁ Google Drive-এ ব্যাকআপ</button>
       <button class="btn grow" data-action="restore">ব্যাকআপ থেকে ফেরান</button></div>
+      <div class="small muted mt">"ব্যাকআপ" চাপলে শেয়ার তালিকা আসবে — সেখান থেকে <b>Drive</b> বেছে নিজের Gmail-এর Drive-এ ফাইলটি রাখুন। ফেরানোর সময় "ব্যাকআপ থেকে ফেরান" চেপে ওই ফাইলটি বাছুন।</div>
+      ${db.cases.length && (!lb || daysUntil(lb) < -7) ? '<div class="hint">৭ দিনের বেশি হলো ব্যাকআপ নেওয়া হয়নি — এখন একটি ব্যাকআপ Drive-এ রাখুন।</div>' : ''}
     </div>
     <div class="section-title">তথ্য</div>
     <div class="card small muted">মোট মামলা: ${bn(db.cases.length)} · মক্কেল: ${bn(db.clients.length)} · তারিখের রেকর্ড: ${bn(db.hearings.length)}<br>
@@ -1332,6 +1345,7 @@ function accountHTML() {
       <div class="row between"><div class="grow"><div class="strong">${esc(p.name)}</div><div class="small muted">${esc(p.email)}</div></div>
         <span class="chip ${admin ? 'soon' : ''}">${admin ? 'অ্যাডভোকেট' : 'ক্লার্ক'}</span></div>
       <div class="small mt">চেম্বার: <b>${esc(p.chamberName)}</b></div>
+      <div class="row mt"><button class="btn small grow" data-action="edit-myname">✏ আমার নাম বদলান</button>${admin ? '<button class="btn small grow" data-action="edit-chamber">✏ চেম্বারের নাম বদলান</button>' : ''}</div>
       <div class="small muted">অবস্থা: <span id="syncText">${SYNC_TEXT[auth.status]}</span></div>
       ${legacy ? `<div class="hint">এই ফোনে লগইনের আগের ${bn(legacy)}টি মামলা আছে যা ক্লাউডে নেই।</div><button class="btn small mt" data-action="upload-legacy">ক্লাউডে তুলুন</button>` : ''}
       <button class="btn block mt" data-action="my-reset">🔑 পাসওয়ার্ড বদলান (ইমেইলে লিংক যাবে)</button>
@@ -1354,8 +1368,9 @@ const route = () => { const [name, id] = (location.hash.replace(/^#\/?/, '') || 
 let lastRoute = '';
 
 function render() {
+  applyTheme();
   const { name, id } = route();
-  const views = { today: () => vToday(), cases: () => vCases(), case: () => vCase(id), clients: () => vClients(), client: () => vClient(id), fees: () => isClerk() ? vToday() : vFees(), more: () => vMore(), causelist: () => vCauseList(id), courts: () => vCourts(), faraiz: () => vFaraiz(), hindu: () => vHindu(), about: () => vAbout(), admin: () => isSuper() ? vAdmin() : vToday(), cs: () => vCS() };
+  const views = { today: () => vToday(), cases: () => vCases(), case: () => vCase(id), clients: () => vClients(), client: () => vClient(id), fees: () => isClerk() ? vToday() : vFees(), more: () => vMore(), causelist: () => vCauseList(id), courts: () => vCourts(), faraiz: () => vFaraiz(), hindu: () => vHindu(), about: () => vAbout(), admin: () => isSuper() ? vAdmin() : vToday(), cs: () => vCS(), laws: () => vLaws() };
   if (!views[name]) { location.replace('#/today'); return; }
   const r = views[name]();
   const bar = $('.appbar');
@@ -1363,7 +1378,7 @@ function render() {
   $('#view').innerHTML = r.html;
   const fab = $('#fab');
   if (r.fab) { fab.hidden = false; fab.dataset.action = r.fab.action; fab.setAttribute('aria-label', r.fab.label); } else fab.hidden = true;
-  const tab = { case: 'cases', client: 'clients', causelist: 'today', courts: 'more', faraiz: 'more', hindu: 'more', about: 'more', admin: 'more', cs: 'more' }[name] || name;
+  const tab = { case: 'cases', client: 'clients', causelist: 'today', courts: 'more', faraiz: 'more', hindu: 'more', about: 'more', admin: 'more', cs: 'more', laws: 'more' }[name] || name;
   const feeTab = document.querySelector('#tabs a[data-tab=fees]'); if (feeTab) feeTab.hidden = isClerk();
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   const key = name + '/' + (id || '');
@@ -1387,6 +1402,37 @@ async function admLoad() {
 async function admBlock(cid, uid, b) {
   if (!await ask(b ? 'এই ব্যবহারকারীকে ব্লক করবেন? সে আর অ্যাপে ঢুকতে বা তথ্য দেখতে পারবে না।' : 'ব্লক তুলে নেবেন?', b ? 'ব্লক করুন' : 'আনব্লক', b)) return;
   try { await Cloud.setBlocked(cid, uid, b); admin.data = null; render(); toast(b ? 'ব্লক করা হয়েছে' : 'আনব্লক হয়েছে'); } catch (e) { toast(cloudErr(e)); }
+}
+async function admDeleteUser(cid, uid) {
+  if (!await ask('এই ব্যবহারকারীর অ্যাকাউন্টের তথ্য (সদস্যপদ ও প্রোফাইল) মুছে ফেলবেন? সে আবার নতুন করে চেম্বার খুলতে/যোগ দিতে পারবে। (লগইন রেকর্ড পুরোপুরি মুছতে Firebase Console → Authentication থেকেও মুছতে হবে।)', 'মুছুন', true)) return;
+  try { await Cloud.adminDeleteUser(cid, uid); admin.data = null; render(); toast('অ্যাকাউন্ট মুছেছে'); } catch (e) { toast(cloudErr(e)); }
+}
+async function admDeleteChamber(cid) {
+  if (!await ask('পুরো চেম্বার ও তার সব মামলা, মক্কেল, ফি, সদস্য চিরতরে মুছে যাবে। এটি আর ফেরানো যাবে না। নিশ্চিত?', 'হ্যাঁ, সব মুছুন', true)) return;
+  if (!await ask('শেষবার জিজ্ঞাসা: সত্যিই এই চেম্বারের সব তথ্য মুছবেন?', 'মুছুন', true)) return;
+  try { toast('মোছা হচ্ছে…'); await Cloud.adminDeleteChamber(cid); admin.data = null; render(); toast('চেম্বার মুছেছে'); } catch (e) { toast(cloudErr(e)); }
+}
+function renameMe() {
+  openSheet('আমার নাম বদলান', field('নাম', `<input name="name" value="${esc(auth.profile.name)}">`), async fd => {
+    const name = (fd.get('name') || '').trim(); if (!name) return toast('নাম লিখুন');
+    try {
+      await Cloud.renameMe(auth.profile.chamberId, auth.user.uid, name);
+      auth.profile = { ...auth.profile, name }; db.cloud = auth.profile; save();
+      if (auth.members) auth.members = auth.members.map(m => m.uid === auth.user.uid ? { ...m, name } : m);
+      await closeSheet(); render(); toast('নাম বদলেছে');
+    } catch (e) { toast(cloudErr(e)); }
+  });
+}
+function renameChamber() {
+  if (!cloudOn() || auth.profile.role !== 'admin') return;
+  openSheet('চেম্বারের নাম বদলান', field('চেম্বারের নাম', `<input name="name" value="${esc(auth.profile.chamberName)}">`), async fd => {
+    const name = (fd.get('name') || '').trim(); if (!name) return toast('নাম লিখুন');
+    try {
+      await Cloud.renameChamber(auth.profile.chamberId, name);
+      auth.profile = { ...auth.profile, chamberName: name }; db.cloud = auth.profile; save();
+      await closeSheet(); render(); toast('চেম্বারের নাম বদলেছে');
+    } catch (e) { toast(cloudErr(e)); }
+  });
 }
 async function admDelete(cid, uid) {
   if (!await ask('এই ব্যবহারকারীকে চেম্বার থেকে সরাবেন?', 'সরান', true)) return;
@@ -1413,7 +1459,8 @@ function vAdmin() {
   const users = !list ? '<div class="small muted">লোড হচ্ছে…</div>' : admin.err ? `<div class="gate-err">${esc(admin.err)}</div>` : !list.length ? '<div class="small muted">কেউ নেই</div>' :
     list.map(ch => `<div class="card"><div class="strong">${esc(ch.name || 'চেম্বার')}</div><div class="small muted">কোড: ${esc(ch.code)} · সদস্য ${bn(ch.members.length)}</div>
       ${ch.members.map(m => `<div class="pay"><div><div>${esc(m.name || '—')} <span class="chip ${m.role === 'admin' ? 'soon' : ''}">${m.role === 'admin' ? 'অ্যাডভোকেট' : 'ক্লার্ক'}</span>${m.blocked ? ' <span class="chip late">ব্লক</span>' : ''}</div><div class="muted small">${esc(m.email || '')}</div></div>
-        ${m.uid === auth.user.uid ? '' : `<div class="col-end"><button class="linkbtn ${m.blocked ? '' : 'red'}" data-action="adm-block" data-cid="${esc(ch.chamberId)}" data-uid="${esc(m.uid)}" data-b="${m.blocked ? 0 : 1}">${m.blocked ? 'আনব্লক' : 'ব্লক'}</button><button class="linkbtn red" data-action="adm-del" data-cid="${esc(ch.chamberId)}" data-uid="${esc(m.uid)}">সরান</button></div>`}</div>`).join('')}</div>`).join('');
+        ${m.uid === auth.user.uid ? '' : `<div class="col-end"><button class="linkbtn ${m.blocked ? '' : 'red'}" data-action="adm-block" data-cid="${esc(ch.chamberId)}" data-uid="${esc(m.uid)}" data-b="${m.blocked ? 0 : 1}">${m.blocked ? 'আনব্লক' : 'ব্লক'}</button><button class="linkbtn red" data-action="adm-del" data-cid="${esc(ch.chamberId)}" data-uid="${esc(m.uid)}">সরান</button><button class="linkbtn red" data-action="adm-del-user" data-cid="${esc(ch.chamberId)}" data-uid="${esc(m.uid)}">মুছুন</button></div>`}</div>`).join('')}
+      ${ch.members.some(m => m.uid === auth.user.uid) ? '' : `<button class="btn danger small mt" data-action="adm-del-chamber" data-cid="${esc(ch.chamberId)}">🗑 পুরো চেম্বার ও সব তথ্য মুছুন</button>`}</div>`).join('');
   const html = `
     <div class="section-title">ব্যবহারকারী <button class="linkbtn" data-action="adm-refresh">রিফ্রেশ</button></div>${users}
     <div class="section-title">সবার অ্যাপে পপআপ বার্তা</div>
@@ -1529,11 +1576,13 @@ function openDrawer() {
   const here = route().name;
   const item = (href, ico, t, sub = '') => `<a class="d-item ${here === href.slice(2) ? 'on' : ''}" href="${href}" data-action="close-drawer"><span class="d-ico">${ico}</span><span><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</span></a>`;
   d.innerHTML = `<div class="d-back" data-action="close-drawer"></div><aside class="d-panel">
-    <div class="d-head"><div class="d-title">কেস ডায়েরি</div><div class="small">${esc(ABOUT.name)}</div></div>
+    <div class="d-head"><div class="d-title">কেস ডায়েরি</div><div class="small">${esc(aboutInfo().name)}</div></div>
     <div class="d-sec">উত্তরাধিকার হিসাব</div>
     ${item('#/faraiz', '☪', 'মুসলিম ফারায়েজ', 'হানাফী মত — ওয়ারিসদের অংশ')}
     ${item('#/hindu', 'ॐ', 'হিন্দু উত্তরাধিকার', 'দায়ভাগা — পুরুষের সম্পত্তি')}
     ${item('#/cs', '📜', 'সিএস খতিয়ান অংশ', 'আনা-গণ্ডা ↔ জমির পরিমাণ')}
+    <div class="d-sec">আইন</div>
+    ${item('#/laws', '📚', 'আইন লাইব্রেরি', 'বাংলাদেশ কোড (bdlaws)')}
     <div class="d-sec">অ্যাপ</div>
     ${item('#/today', '📅', 'আজ')}
     ${item('#/cases', '📁', 'মামলা')}
@@ -1550,21 +1599,137 @@ function closeDrawer() { const d = $('#drawer'); if (!d) return; d.classList.rem
 
 /* ---- আমার পরিচয় (স্থির; কেউ বদলাতে পারে না) ---- */
 const ABOUT = { name: 'অ্যাডভোকেট মোঃ আবু ফাহাদ তাউকির', en: 'Advocate Md. Abu Fahad Taukir', place: 'জামালপুর, বাংলাদেশ', mobile: '01999891729', email: 'fahadtaukir@gmail.com' };
-const APP_VERSION = '2.3';
-function aboutText() { return `${ABOUT.name}\n${ABOUT.en}\nমোবাইল: ${ABOUT.mobile}\nইমেইল: ${ABOUT.email}`; }
+const APP_VERSION = '2.5';
+function noticeCfg() { try { return JSON.parse(localStorage.getItem('caseDiary.notices') || '{}'); } catch (e) { return {}; } }
+function aboutInfo() { const a = noticeCfg().about; return a && a.name ? { ...ABOUT, ...a } : ABOUT; }
+function aboutText() { const A = aboutInfo(); return `${A.name}\n${A.en || ''}\nমোবাইল: ${A.mobile}\nইমেইল: ${A.email}${A.extra ? '\n' + A.extra : ''}`; }
+function aboutEdit() {
+  const A = aboutInfo();
+  const f = openSheet('আমার পরিচয় সম্পাদনা', `
+    ${field('নাম (বাংলা)', `<input name="name" value="${esc(A.name)}">`)}
+    ${field('নাম (ইংরেজি)', `<input name="en" value="${esc(A.en || '')}">`)}
+    ${field('কর্মক্ষেত্র', `<input name="place" value="${esc(A.place || '')}">`)}
+    ${field('মোবাইল', `<input name="mobile" inputmode="tel" value="${esc(A.mobile || '')}">`)}
+    ${field('ইমেইল', `<input name="email" type="email" value="${esc(A.email || '')}">`)}
+    ${field('অন্যান্য তথ্য (এনরোলমেন্ট, চেম্বারের ঠিকানা ইত্যাদি)', `<textarea name="extra" style="min-height:90px">${esc(A.extra || '')}</textarea>`)}
+    <div class="small muted">এটি শুধু আপনিই বদলাতে পারবেন; সবার অ্যাপে "আমার পরিচয়" পাতায় এই তথ্য দেখাবে (ইন্টারনেট থাকলে)।</div>`, async fd => {
+    const g = k => (fd.get(k) || '').trim();
+    if (!g('name')) return toast('নাম লিখুন');
+    const data = { name: g('name'), en: g('en'), place: g('place'), mobile: g('mobile'), email: g('email'), extra: g('extra') };
+    try {
+      await Cloud.setConfig('about', data);
+      const cfg = noticeCfg(); cfg.about = data; try { localStorage.setItem('caseDiary.notices', JSON.stringify(cfg)); } catch (e) { /* ignore */ }
+      await closeSheet(); render(); toast('সংরক্ষিত হয়েছে');
+    } catch (e) { toast(cloudErr(e)); }
+  });
+  return f;
+}
 function vAbout() {
+  const A = aboutInfo();
   const html = `<div class="card about">
       <div class="ab-av">⚖</div>
-      <div class="ab-name">${esc(ABOUT.name)}</div>
-      <div class="muted">${esc(ABOUT.en)}</div>
-      <div class="ab-row"><span>কর্মক্ষেত্র</span><b>${esc(ABOUT.place)}</b></div>
-      <div class="ab-row"><span>মোবাইল</span><a href="tel:${ABOUT.mobile}">${ABOUT.mobile}</a></div>
-      <div class="ab-row"><span>ইমেইল</span><a href="mailto:${ABOUT.email}">${ABOUT.email}</a></div>
-      <div class="row mt"><a class="btn primary grow" href="tel:${ABOUT.mobile}">কল করুন</a><a class="btn grow" href="mailto:${ABOUT.email}">ইমেইল</a></div>
+      <div class="ab-name">${esc(A.name)}</div>
+      <div class="muted">${esc(A.en || '')}</div>
+      <div class="ab-row"><span>কর্মক্ষেত্র</span><b>${esc(A.place || '')}</b></div>
+      <div class="ab-row"><span>মোবাইল</span><a href="tel:${esc(A.mobile)}">${esc(A.mobile)}</a></div>
+      <div class="ab-row"><span>ইমেইল</span><a href="mailto:${esc(A.email)}">${esc(A.email)}</a></div>
+      ${A.extra ? `<div class="small mt" style="white-space:pre-wrap">${esc(A.extra)}</div>` : ''}
+      <div class="row mt"><a class="btn primary grow" href="tel:${esc(A.mobile)}">কল করুন</a><a class="btn grow" href="mailto:${esc(A.email)}">ইমেইল</a></div>
       <button class="btn block mt" data-action="share-about">শেয়ার</button>
+      ${isSuper() ? '<button class="btn block mt" data-action="edit-about">✏ আমার পরিচয় সম্পাদনা (শুধু আপনি)</button>' : ''}
     </div>
     <div class="card"><div class="strong">কেস ডায়েরি v${APP_VERSION}</div><div class="small muted">App built by Adv Abu Fahad Taukir</div></div>`;
-  return { title: 'আমার পরিচয়', html, back: '#/today' };
+  return { title: 'আমার পরিচয়', html, back: '#/today', after() {
+    if (!Cloud.configured || !Cloud.getConfig) return;
+    Cloud.getConfig().then(cfg => {
+      if (cfg.about === undefined) return;
+      const old = JSON.stringify(noticeCfg().about || null);
+      if (old !== JSON.stringify(cfg.about || null)) { const c = noticeCfg(); c.about = cfg.about; try { localStorage.setItem('caseDiary.notices', JSON.stringify(c)); } catch (e) { /* ignore */ } if (route().name === 'about') render(); }
+    }).catch(() => {});
+  } };
+}
+
+/* ---- হাজিরা ও সময়ের দরখাস্ত (ছাপার আগে সম্পাদনা করা যায়) ---- */
+const PETITIONS = { party: 'পক্ষের হাজিরা', adv: 'অ্যাডভোকেট হাজিরা', time: 'সময়ের দরখাস্ত' };
+function petitionDraft(c, kind) {
+  const crim = typeClass(c.type) === 't-crim';
+  const plR = 'বাদী', dfR = crim ? 'আসামী' : 'বিবাদী';
+  const mineD = c.ourSide === 'd';
+  const myR = mineD ? dfR : plR, myName = (mineD ? c.defendant : c.plaintiff) || '________';
+  const t = today(), d = fmtDate(c.nextDate && c.nextDate >= t ? c.nextDate : t);
+  const adv = c.ourAdvocate || (cloudOn() && auth.profile.role === 'admin' ? auth.profile.name : '') || aboutInfo().name;
+  const head = `মাননীয় ${c.court || '________'} আদালতে\n${c.type || ''} মামলা নং ${c.caseNo || '________'}\n\n${c.plaintiff || '________'}  ........  ${plR}\nবনাম\n${c.defendant || '________'}  ........  ${dfR}`;
+  let title, body, sign;
+  if (kind === 'party') {
+    title = `${myR} পক্ষের হাজিরা`;
+    body = `${myR} ${myName} স্বয়ং অদ্য ${d} তারিখে উপরোক্ত মামলায় ধার্য তারিখে আদালতে হাজির আছেন।\n\nঅতএব, উক্ত হাজিরা গ্রহণ করিয়া বাধিত করিবেন।`;
+    sign = `${myName}\n${myR}\nস্বাক্ষর: ................\nতারিখ: ${d}`;
+  } else if (kind === 'adv') {
+    title = `${myR} পক্ষে অ্যাডভোকেটের হাজিরা`;
+    body = `উপরোক্ত মামলাটি অদ্য ${d} তারিখে ধার্য আছে। ${myR} ${myName} পক্ষে নিম্নস্বাক্ষরকারী অ্যাডভোকেট ওকালতনামাবলে আদালতে হাজির আছেন।\n\nঅতএব, উক্ত হাজিরা গ্রহণ করিতে মর্জি হয়।`;
+    sign = `বিনীত নিবেদক,\n${adv}\n${myR} পক্ষের অ্যাডভোকেট\nতারিখ: ${d}`;
+  } else {
+    title = `${myR} পক্ষের সময়ের দরখাস্ত`;
+    body = `${myR} ${myName} পক্ষে বিনীত নিবেদন এই যে, উপরোক্ত মামলাটি অদ্য ${d} তারিখে ${c.nextPurpose ? c.nextPurpose + ' কার্যক্রমের জন্য ' : ''}ধার্য আছে। কিন্তু নিম্নলিখিত কারণে ${myR} পক্ষ অদ্য মামলা পরিচালনার জন্য প্রস্তুত হইতে পারেন নাই:\n\n১। [কারণ লিখুন]\n\nঅতএব, উপরোক্ত অবস্থায় অদ্যকার জন্য সময় মঞ্জুর করিয়া মামলার পরবর্তী তারিখ ধার্য করিতে মর্জি হয়।`;
+    sign = `বিনীত নিবেদক,\n${adv}\n${myR} পক্ষের অ্যাডভোকেট\nতারিখ: ${d}`;
+  }
+  return { head, title, body, sign };
+}
+function petitionSheet(id) {
+  const c = getCase(id); if (!c) return;
+  let kind = 'time', dirty = false;
+  const f = openSheet('হাজিরা / দরখাস্ত', `
+    <div class="seg" id="petKind">${Object.entries(PETITIONS).map(([k, v]) => `<label><input type="radio" name="kind" value="${k}" ${k === kind ? 'checked' : ''}><span>${v}</span></label>`).join('')}</div>
+    <div class="small muted mt">নিচের লেখা ইচ্ছামতো বদলে নিন, তারপর উপরে ডানের "PDF" চাপুন — শেয়ার/প্রিন্ট করা যাবে।</div>
+    <label class="field mt"><span>মাথার অংশ (আদালত, মামলা, পক্ষ)</span><textarea name="head" style="min-height:130px"></textarea></label>
+    <label class="field"><span>শিরোনাম</span><input name="title"></label>
+    <label class="field"><span>মূল লেখা</span><textarea name="body" style="min-height:220px"></textarea></label>
+    <label class="field"><span>স্বাক্ষর অংশ</span><textarea name="sign" style="min-height:100px"></textarea></label>`, async fd => {
+    const data = { head: fd.get('head') || '', title: fd.get('title') || '', body: fd.get('body') || '', sign: fd.get('sign') || '' };
+    if (!window.CausePDF || !window.CausePDF.doc) return toast('PDF তৈরির কোড লোড হয়নি');
+    toast('PDF তৈরি হচ্ছে…');
+    try {
+      const { bytes } = await window.CausePDF.doc(data);
+      await sharePdf(bytes, `${kind}-${(c.caseNo || 'case').replace(/[^\wঀ-৿]+/g, '-')}.pdf`, data.title, 'দরখাস্ত — শেয়ার বা প্রিন্ট করুন');
+    } catch (e) { if (!/cancel|abort/i.test(String(e && (e.message || e.name)))) { console.error(e); toast('PDF বানানো যায়নি'); } }
+  }, 'PDF');
+  const fill = () => { const dr = petitionDraft(c, kind); for (const k of ['head', 'title', 'body', 'sign']) f.elements[k].value = dr[k]; dirty = false; };
+  fill();
+  f.addEventListener('input', e => { if (e.target.name !== 'kind') dirty = true; });
+  f.addEventListener('change', async e => {
+    if (e.target.name !== 'kind') return;
+    const prev = kind; kind = e.target.value;
+    if (dirty && !await ask('লেখা বদলে ফেলা হয়েছে। নতুন ধরনের খসড়া বসালে আপনার সম্পাদনা মুছে যাবে। বসাবেন?', 'বসান')) {
+      kind = prev; f.querySelector(`input[name=kind][value=${prev}]`).checked = true; return;
+    }
+    fill();
+  });
+  return f;
+}
+
+/* ---- বাংলাদেশের আইন (bdlaws.minlaw.gov.bd) ---- */
+const LAWS = [
+  ['বাংলাদেশের সংবিধান', ''], ['দণ্ডবিধি', '১৮৬০'], ['ফৌজদারী কার্যবিধি', '১৮৯৮'], ['দেওয়ানী কার্যবিধি', '১৯০৮'], ['সাক্ষ্য আইন', '১৮৭২'],
+  ['তামাদি আইন', '১৯০৮'], ['চুক্তি আইন', '১৮৭২'], ['সম্পত্তি হস্তান্তর আইন', '১৮৮২'], ['রেজিস্ট্রেশন আইন', '১৯০৮'], ['স্ট্যাম্প আইন', '১৮৯৯'],
+  ['সুনির্দিষ্ট প্রতিকার আইন', '১৮৭৭'], ['রাষ্ট্রীয় অধিগ্রহণ ও প্রজাস্বত্ব আইন', '১৯৫০'], ['ভূমি সংস্কার অধ্যাদেশ', '১৯৮৪'], ['ভূমি উন্নয়ন কর আইন', '২০২৩'],
+  ['মুসলিম পারিবারিক আইন অধ্যাদেশ', '১৯৬১'], ['মুসলিম বিবাহ বিচ্ছেদ আইন', '১৯৩৯'], ['মুসলিম বিবাহ ও তালাক (নিবন্ধন) আইন', '১৯৭৪'], ['পারিবারিক আদালত অধ্যাদেশ', '১৯৮৫'],
+  ['অভিভাবক ও প্রতিপাল্য আইন', '১৮৯০'], ['হিন্দু বিবাহ নিবন্ধন আইন', '২০১২'], ['যৌতুক নিরোধ আইন', '২০১৮'], ['নারী ও শিশু নির্যাতন দমন আইন', '২০০০'],
+  ['মাদকদ্রব্য নিয়ন্ত্রণ আইন', '২০১৮'], ['নেগোশিয়েবল ইন্সট্রুমেন্টস আইন', '১৮৮১'], ['অর্থঋণ আদালত আইন', '২০০৩'], ['সালিস আইন', '২০০১'],
+  ['শ্রম আইন', '২০০৬'], ['ভোক্তা অধিকার সংরক্ষণ আইন', '২০০৯'], ['তথ্য অধিকার আইন', '২০০৯'], ['সড়ক পরিবহন আইন', '২০১৮']
+];
+const lawLink = q => 'https://www.google.com/search?q=' + encodeURIComponent(q + ' site:bdlaws.minlaw.gov.bd');
+function vLaws() {
+  const html = `<div class="card"><div class="small muted">আইনের পূর্ণ পাঠ সরকারি সাইট <b>bdlaws.minlaw.gov.bd</b> (বাংলাদেশ কোড)-এ আছে। নিচের বোতামে চাপলে ব্রাউজারে সেই আইন খুঁজে খুলবে (ইন্টারনেট লাগবে)।</div>
+      <a class="btn primary block mt" href="https://bdlaws.minlaw.gov.bd/" target="_blank" rel="noopener">🌐 bdlaws.minlaw.gov.bd খুলুন</a>
+      <label class="field mt"><span>আইন বা ধারা খুঁজুন</span><input id="lawQ" placeholder="যেমন: দণ্ডবিধি ৩২৩ ধারা"></label>
+      <button class="btn block" data-action="law-search">খুঁজুন</button></div>
+    <div class="section-title">গুরুত্বপূর্ণ আইন</div>
+    <div class="card" style="padding:4px 14px">${LAWS.map(([n, y]) => `<div class="setting"><div>${esc(n)}${y ? `, ${y}` : ''}</div><a class="btn small" href="${lawLink(n + (y ? ' ' + y : ''))}" target="_blank" rel="noopener">খুলুন</a></div>`).join('')}</div>`;
+  return { title: 'আইন লাইব্রেরি', html, back: '#/more' };
+}
+function lawSearch() {
+  const q = (($('#lawQ') || {}).value || '').trim(); if (!q) return toast('কী খুঁজবেন লিখুন');
+  window.open(lawLink(q), '_blank');
 }
 
 /* ---- উত্তরাধিকার ---- */
@@ -1737,6 +1902,14 @@ document.addEventListener('click', async e => {
     case 'share-inherit': shareText(el.dataset.title, $('#inhText').value); break;
     case 'new-case': caseForm(); break;
     case 'edit-case': caseForm(id); break;
+    case 'petition': petitionSheet(id); break;
+    case 'edit-about': aboutEdit(); break;
+    case 'set-theme': setTheme(el.dataset.v); break;
+    case 'edit-myname': renameMe(); break;
+    case 'edit-chamber': renameChamber(); break;
+    case 'adm-del-user': admDeleteUser(el.dataset.cid, el.dataset.uid); break;
+    case 'adm-del-chamber': admDeleteChamber(el.dataset.cid); break;
+    case 'law-search': lawSearch(); break;
     case 'new-client': clientForm(); break;
     case 'edit-client': clientForm(id); break;
     case 'hearing': hearingForm(cid, id); break;
